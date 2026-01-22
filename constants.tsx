@@ -1,4 +1,5 @@
-import { LogEntry, TraumaData, PressureData, NDRProject } from './types';
+
+import { LogEntry, TraumaData, PressureData, NDRProject, TubingItem, WellReport } from './types';
 
 // Mock Log Data for Ghost-Sync
 export const MOCK_BASE_LOG: LogEntry[] = Array.from({ length: 100 }, (_, i) => ({
@@ -10,6 +11,21 @@ export const MOCK_GHOST_LOG: LogEntry[] = MOCK_BASE_LOG.map(entry => ({
   depth: entry.depth + 14.5, // 14.5m offset
   gr: entry.gr + (Math.random() - 0.5) * 5
 }));
+
+// Mock Tubing Tally
+export const MOCK_TUBING_TALLY: TubingItem[] = [
+  { id: 1, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.05, cumulative_m: 12.05, status: 'VALID' },
+  { id: 2, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.10, cumulative_m: 24.15, status: 'VALID' },
+  { id: 3, type: 'SSSV (Safety Valve)', od_in: 4.5, id_in: 2.8, weight_lbft: 12.5, grade: 'X-95', length_m: 2.45, cumulative_m: 26.60, status: 'VALID' },
+  { id: 4, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.08, cumulative_m: 38.68, status: 'DISCREPANT' },
+  { id: 5, type: 'Crossover', od_in: 3.5, id_in: 2.7, weight_lbft: 10.1, grade: 'L80', length_m: 0.85, cumulative_m: 39.53, status: 'VALID' },
+  { id: 6, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.12, cumulative_m: 51.65, status: 'VALID' },
+];
+
+export const MOCK_INTERVENTION_REPORTS: WellReport[] = [
+  { reportId: 'DDR-2024-001', date: '2024-05-10', opType: 'INTERVENTION', summary: 'Pulled completion to 1200m. Identified heavy scale build-up. Commenced tally for re-run.', eodDepth_m: 1200.0 },
+  { reportId: 'DDR-2024-002', date: '2024-05-11', opType: 'COMPLETION', summary: 'Running in hole with new L80 completion string. Tally mismatch noted at joint #4.', eodDepth_m: 1245.5 },
+];
 
 // Mock NDR Projects
 export const MOCK_NDR_PROJECTS: NDRProject[] = [

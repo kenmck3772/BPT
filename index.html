@@ -61,6 +61,15 @@
       animation: forensic-ping 0.8s cubic-bezier(0, 0, 0.2, 1) forwards;
     }
 
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    .animate-shake {
+      animation: shake 0.2s ease-in-out 2;
+    }
+
     @keyframes pulse-orange {
       0%, 100% { border-color: rgba(255, 95, 31, 0.4); box-shadow: 0 0 5px rgba(255, 95, 31, 0.2); }
       50% { border-color: rgba(255, 95, 31, 1); box-shadow: 0 0 15px rgba(255, 95, 31, 0.5); }

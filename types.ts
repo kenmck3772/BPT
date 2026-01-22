@@ -1,3 +1,4 @@
+
 export interface LogEntry {
   depth: number;
   gr: number;
@@ -57,10 +58,31 @@ export interface NDRProject {
   hasDatumShiftIssues?: boolean;
 }
 
+export interface TubingItem {
+  id: number;
+  type: string;
+  od_in: number;
+  id_in: number;
+  weight_lbft: number;
+  grade: string;
+  length_m: number;
+  cumulative_m: number;
+  status: 'VALID' | 'DISCREPANT';
+}
+
+export interface WellReport {
+  reportId: string;
+  date: string;
+  opType: 'DRILLING' | 'INTERVENTION' | 'COMPLETION';
+  summary: string;
+  eodDepth_m: number;
+}
+
 export enum ActiveModule {
   GHOST_SYNC = 'GHOST_SYNC',
   TRAUMA_NODE = 'TRAUMA_NODE',
   PULSE_ANALYZER = 'PULSE_ANALYZER',
+  REPORTS_SCANNER = 'REPORTS_SCANNER',
   VAULT = 'VAULT'
 }
 
