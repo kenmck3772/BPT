@@ -14,6 +14,8 @@ export interface TraumaData {
   waterLeakage: number;
   stress: number;
   ici: number;
+  metalLoss: number;
+  ovality: number;
 }
 
 export interface TraumaEvent {
@@ -66,6 +68,7 @@ export interface NDRProject {
   status: 'RELEASED' | 'RESTRICTED' | 'ARCHIVED';
   releaseDate: string;
   type: 'well' | 'seismic' | 'survey';
+  wellboreType?: 'VERTICAL' | 'HORIZONTAL' | 'DIRECTIONAL';
   sizeGb: number;
   sha512: string;
   hasDatumShiftIssues?: boolean;
@@ -107,5 +110,7 @@ export enum TraumaLayer {
   WALL_LOSS = 'WALL_LOSS',
   WATER_LEAKAGE = 'WATER_LEAKAGE',
   STRESS = 'STRESS',
-  ICI = 'ICI'
+  ICI = 'ICI',
+  METAL_LOSS = 'METAL_LOSS',
+  OVALITY = 'OVALITY'
 }

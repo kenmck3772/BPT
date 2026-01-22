@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import GhostSync from './components/GhostSync';
 import TraumaNode from './components/TraumaNode';
@@ -16,7 +17,7 @@ import {
   Cpu, Wifi, Zap, CornerDownRight, Radio, Settings2, 
   Fingerprint, Power, LayoutGrid, Maximize2, Minimize2,
   ChevronLeft, ChevronRight, X, ShieldAlert, Sparkles,
-  FileSearch
+  FileSearch, Compass, MoveDown, RotateCw
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -35,6 +36,7 @@ const App: React.FC = () => {
   const [harvestProgress, setHarvestProgress] = useState(0);
   const [allowanceUsed, setAllowanceUsed] = useState(14.2); 
   const [isGhostOnly, setIsGhostOnly] = useState(false);
+  const [wellboreFilter, setWellboreFilter] = useState<'ALL' | 'VERTICAL' | 'HORIZONTAL' | 'DIRECTIONAL'>('ALL');
 
   useEffect(() => {
     const start = Date.now();
@@ -51,18 +53,18 @@ const App: React.FC = () => {
   const handleNdrSearch = useCallback(async () => {
     setIsNdrSearching(true);
     try {
-      const results = await searchNDRMetadata(ndrSearchQuery, 'ALL', isGhostOnly);
+      const results = await searchNDRMetadata(ndrSearchQuery, 'ALL', wellboreFilter, isGhostOnly);
       setNdrResults(results);
     } catch (err) {
       setInsight("NDR_ERROR: SECURE HANDSHAKE FAILED.");
     } finally {
       setIsNdrSearching(false);
     }
-  }, [ndrSearchQuery, isGhostOnly]);
+  }, [ndrSearchQuery, wellboreFilter, isGhostOnly]);
 
   useEffect(() => {
     handleNdrSearch();
-  }, [isGhostOnly, handleNdrSearch]);
+  }, [isGhostOnly, wellboreFilter, handleNdrSearch]);
 
   const fetchInsight = async (context?: string) => {
     setIsAnalyzing(true);
@@ -210,7 +212,7 @@ const App: React.FC = () => {
               </button>
             </div>
             
-            <div className={`p-4 space-y-3 transition-all duration-500 ${focusedModule === 'CRAWLER' ? 'max-w-3xl mx-auto w-full px-10' : ''}`}>
+            <div className={`p-4 space-y-4 transition-all duration-500 ${focusedModule === 'CRAWLER' ? 'max-w-4xl mx-auto w-full px-10' : ''}`}>
               <div className="relative group">
                 <input 
                   type="text" 
@@ -228,6 +230,29 @@ const App: React.FC = () => {
                 >
                   <Search size={focusedModule === 'CRAWLER' ? 20 : 16} />
                 </button>
+              </div>
+
+              {/* Wellbore Type Segmented Control */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest">Wellbore_Schema</span>
+                  <Compass size={10} className="text-emerald-900" />
+                </div>
+                <div className="grid grid-cols-4 gap-1 bg-slate-950/80 p-1 border border-emerald-900/20 rounded">
+                  {(['ALL', 'VERTICAL', 'HORIZONTAL', 'DIRECTIONAL'] as const).map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => setWellboreFilter(type)}
+                      className={`py-1.5 text-[8px] font-black uppercase tracking-tighter rounded transition-all ${
+                        wellboreFilter === type 
+                          ? 'bg-emerald-500 text-slate-950 shadow-[0_0_10px_rgba(16,185,129,0.3)]' 
+                          : 'text-emerald-900 hover:text-emerald-600'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <button 
@@ -253,7 +278,12 @@ const App: React.FC = () => {
                 <div key={project.projectId} data-testid={`project-${project.projectId}`} className="p-4 bg-slate-900/40 border border-emerald-900/20 rounded hover:border-emerald-500/50 hover:bg-slate-900/60 transition-all cursor-default group relative overflow-hidden h-fit">
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-[8px] font-mono text-emerald-600 truncate">{project.projectId}</span>
-                    {project.hasDatumShiftIssues && <AlertCircle size={12} className="text-orange-500 animate-pulse" title="High Discordance Risk" />}
+                    <div className="flex space-x-1">
+                      {project.wellboreType === 'VERTICAL' && <MoveDown size={10} className="text-blue-500" title="Vertical Well" />}
+                      {project.wellboreType === 'HORIZONTAL' && <ChevronRight size={10} className="text-purple-500" title="Horizontal Well" />}
+                      {project.wellboreType === 'DIRECTIONAL' && <RotateCw size={10} className="text-yellow-500" title="Directional Well" />}
+                      {project.hasDatumShiftIssues && <AlertCircle size={12} className="text-orange-500 animate-pulse" title="High Discordance Risk" />}
+                    </div>
                   </div>
                   <div className={`font-bold text-emerald-100 truncate ${focusedModule === 'CRAWLER' ? 'text-sm' : 'text-[11px]'}`}>{project.name}</div>
                   <div className="flex justify-between items-center mt-4">

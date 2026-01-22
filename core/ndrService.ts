@@ -15,7 +15,12 @@ export async function authenticateNDR() {
 /**
  * Searches the NDR Metadata API for projects.
  */
-export async function searchNDRMetadata(query: string, status?: string, ghostOnly?: boolean): Promise<NDRProject[]> {
+export async function searchNDRMetadata(
+  query: string, 
+  status: string = 'ALL', 
+  wellboreType: string = 'ALL', 
+  ghostOnly: boolean = false
+): Promise<NDRProject[]> {
   await new Promise(r => setTimeout(r, 800));
   const normalizedQuery = query.toLowerCase();
   
@@ -24,10 +29,11 @@ export async function searchNDRMetadata(query: string, status?: string, ghostOnl
       p.projectId.toLowerCase().includes(normalizedQuery) || 
       p.name.toLowerCase().includes(normalizedQuery);
     
-    const matchesStatus = !status || status === 'ALL' || p.status === status;
+    const matchesStatus = status === 'ALL' || p.status === status;
+    const matchesWellbore = wellboreType === 'ALL' || p.wellboreType === wellboreType;
     const matchesGhost = !ghostOnly || p.hasDatumShiftIssues === true;
     
-    return matchesQuery && matchesStatus && matchesGhost;
+    return matchesQuery && matchesStatus && matchesWellbore && matchesGhost;
   });
 }
 

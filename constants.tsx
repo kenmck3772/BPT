@@ -56,6 +56,7 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     status: 'RELEASED',
     releaseDate: '1985-06-01',
     type: 'well',
+    wellboreType: 'VERTICAL',
     sizeGb: 1.2,
     sha512: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     hasDatumShiftIssues: true,
@@ -68,6 +69,7 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     status: 'RELEASED',
     releaseDate: '2022-11-15',
     type: 'well',
+    wellboreType: 'DIRECTIONAL',
     sizeGb: 0.8,
     sha512: 'f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc2638bc',
     hasDatumShiftIssues: false,
@@ -80,6 +82,7 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     status: 'RESTRICTED',
     releaseDate: '2028-01-01',
     type: 'well',
+    wellboreType: 'HORIZONTAL',
     sizeGb: 4.5,
     sha512: '89a80e43d9426f0c43109a90e4f3a9e6e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8',
     hasDatumShiftIssues: true
@@ -97,6 +100,8 @@ for (let d = 1240; d < 1250; d += 0.5) {
     let waterLeakage = Math.random() * 5; 
     let stress = Math.random() * 10; 
     let ici = Math.random() * 20; 
+    let metalLoss = Math.random() * 8;
+    let ovality = Math.random() * 2;
 
     if (d === 1245.5 && f > 10 && f < 15) {
       deviation = 4.8;
@@ -106,6 +111,8 @@ for (let d = 1240; d < 1250; d += 0.5) {
       waterLeakage = 92; 
       stress = 88; 
       ici = 95; 
+      metalLoss = 28;
+      ovality = 5.5;
     }
     
     if (d === 1248.5 && f > 30 && f < 35) {
@@ -114,9 +121,11 @@ for (let d = 1240; d < 1250; d += 0.5) {
       waterLeakage = 15;
       stress = 30;
       ici = 55;
+      metalLoss = 18;
+      ovality = 3.2;
     }
 
-    MOCK_TRAUMA_DATA.push({ fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, waterLeakage, stress, ici });
+    MOCK_TRAUMA_DATA.push({ fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, waterLeakage, stress, ici, metalLoss, ovality });
   }
 }
 

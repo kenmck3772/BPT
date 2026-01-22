@@ -43,14 +43,22 @@
     }
 
     @keyframes flicker {
-      0% { opacity: 0.99; }
-      5% { opacity: 0.98; }
-      10% { opacity: 0.95; }
-      15% { opacity: 0.99; }
-      100% { opacity: 0.985; }
+      0% { opacity: 0.993; }
+      1% { opacity: 0.984; }
+      2% { opacity: 0.997; }
+      3% { opacity: 0.982; }
+      4% { opacity: 0.991; }
+      5% { opacity: 0.987; }
+      10% { opacity: 0.990; }
+      15% { opacity: 0.983; }
+      20% { opacity: 0.995; }
+      30% { opacity: 0.988; }
+      50% { opacity: 0.992; }
+      80% { opacity: 0.985; }
+      100% { opacity: 0.994; }
     }
     .crt-flicker {
-      animation: flicker 0.15s infinite;
+      animation: flicker 0.1s infinite;
     }
 
     @keyframes forensic-ping {
@@ -76,6 +84,19 @@
     }
     .animate-pulse-orange {
       animation: pulse-orange 2s infinite;
+    }
+
+    @keyframes material-ripple {
+      0% { transform: scale(0); opacity: 0.5; }
+      100% { transform: scale(4); opacity: 0; }
+    }
+    .ripple-effect {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(16, 185, 129, 0.4);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      animation: material-ripple 0.6s ease-out forwards;
     }
 
     ::-webkit-scrollbar {

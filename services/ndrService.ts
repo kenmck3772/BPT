@@ -19,15 +19,19 @@ export async function authenticateNDR() {
 
 /**
  * Searches the NDR Metadata API for projects.
- * Enhanced to identify 'Data Ghosts' (Datum Shifts) and 'Barrier Integrity Artifacts'.
+ * Enhanced to identify 'Data Ghosts' (Datum Shifts) and 'Wellbore Type' classification.
  */
-export async function searchNDRMetadata(query: string, status?: string, type?: string, ghostOnly?: boolean): Promise<NDRProject[]> {
+export async function searchNDRMetadata(
+  query: string, 
+  status: string = 'ALL', 
+  wellboreType: string = 'ALL', 
+  ghostOnly: boolean = false
+): Promise<NDRProject[]> {
   await new Promise(r => setTimeout(r, 1200)); // Simulate API latency
   
   const normalizedQuery = query.toLowerCase();
   
-  // Simulate a forensic metadata crawl for specific petrophysical or integrity flags
-  console.log(`NDR_METADATA_API: Crawling for ${ghostOnly ? 'DATUM_SHIFT_ANOMALIES' : 'STANDARD_PROJECTS'}...`);
+  console.log(`NDR_METADATA_API: Crawling for ${ghostOnly ? 'DATUM_SHIFT_ANOMALIES' : 'STANDARD_PROJECTS'} with wellbore filter: ${wellboreType}...`);
   
   return MOCK_NDR_PROJECTS.filter(p => {
     const matchesQuery = !query || 
@@ -35,13 +39,11 @@ export async function searchNDRMetadata(query: string, status?: string, type?: s
       p.quadrant.toLowerCase().includes(normalizedQuery) ||
       p.name.toLowerCase().includes(normalizedQuery);
     
-    const matchesStatus = !status || status === 'ALL' || p.status === status;
-    const matchesType = !type || type === 'ALL' || p.type === type;
-    
-    // The 'Data Ghost' filter specifically looks for the hasDatumShiftIssues metadata flag
+    const matchesStatus = status === 'ALL' || p.status === status;
+    const matchesWellbore = wellboreType === 'ALL' || p.wellboreType === wellboreType;
     const matchesGhost = !ghostOnly || p.hasDatumShiftIssues === true;
     
-    return matchesQuery && matchesStatus && matchesType && matchesGhost;
+    return matchesQuery && matchesStatus && matchesWellbore && matchesGhost;
   });
 }
 

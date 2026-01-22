@@ -7,7 +7,9 @@ import {
   Video, VideoOff, Sliders, Play, RotateCw, CheckCircle2, 
   AlertTriangle, Search, Activity, ScanLine, Target, 
   Cpu, LayoutGrid, Info, ArrowLeftRight, ListFilter,
-  Eye, EyeOff, Layers, Hash, Database, Globe, Link as LinkIcon
+  Eye, EyeOff, Layers, Hash, Database, Globe, Link as LinkIcon,
+  ChevronUp, ChevronDown, MoveVertical, FileDown,
+  SendHorizontal, X
 } from 'lucide-react';
 import { LogEntry } from '../types';
 
@@ -31,6 +33,7 @@ const GhostSync: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [isAutoAligning, setIsAutoAligning] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'OVERLAY' | 'DIFFERENTIAL'>('OVERLAY');
   const [correlationScore, setCorrelationScore] = useState(0);
   const [isShutterActive, setIsShutterActive] = useState(false);
@@ -87,21 +90,80 @@ const GhostSync: React.FC = () => {
     setSignals(prev => prev.map(s => s.id === id ? { ...s, visible: !s.visible } : s));
   };
 
+  const handleExportPNG = async () => {
+    if (!chartContainerRef.current || isExporting) return;
+    setIsExporting(true);
+    setValidationError("SNAPSHOT: CAPTURING FORENSIC TRACE...");
+
+    try {
+      const container = chartContainerRef.current;
+      const svg = container.querySelector('svg');
+      if (!svg) throw new Error("SVG_NOT_FOUND");
+
+      const clonedSvg = svg.cloneNode(true) as SVGElement;
+      clonedSvg.setAttribute('style', 'background-color: #010409;');
+      
+      const svgData = new XMLSerializer().serializeToString(clonedSvg);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = () => {
+        canvas.width = img.width * 2; 
+        canvas.height = img.height * 2;
+        if (ctx) {
+          ctx.scale(2, 2);
+          ctx.fillStyle = '#010409';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          ctx.font = 'bold 12px "Fira Code", monospace';
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
+          ctx.textAlign = 'right';
+          ctx.fillText('VERIFIED: BRAHAN FORENSICS', img.width - 20, img.height - 20);
+          ctx.fillText(`TIMESTAMP: ${new Date().toISOString()}`, img.width - 20, img.height - 35);
+          ctx.fillText(`CORRELATION: ${correlationScore.toFixed(1)}%`, img.width - 20, img.height - 50);
+
+          const pngUrl = canvas.toDataURL('image/png');
+          const downloadLink = document.createElement('a');
+          downloadLink.href = pngUrl;
+          downloadLink.download = `BRAHAN_GHOST_SYNC_${Date.now()}.png`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        }
+        URL.revokeObjectURL(url);
+        setIsExporting(false);
+        setValidationError("SNAPSHOT_COMPLETE: PNG_ARCHIVED");
+        setIsShutterActive(true);
+        setTimeout(() => setIsShutterActive(false), 300);
+      };
+      img.src = url;
+    } catch (error) {
+      console.error(error);
+      setValidationError("SNAPSHOT_ERROR: FAILED_TO_RENDER_IMAGE");
+      setIsExporting(false);
+    }
+  };
+
   const handleRemoteIngest = async () => {
     if (!remoteUrl) return;
     setIsFetchingRemote(true);
-    setValidationError("INGEST_PROTOCOL: ESTABLISHING HANDSHAKE...");
+    setValidationError("FETCHING_REMOTE_TRACE: INITIATING UPLINK...");
     
     try {
       const response = await fetch(remoteUrl);
-      if (!response.ok) throw new Error("REMOTE_ACCESS_DENIED");
+      if (!response.ok) throw new Error("NETWORK_ACCESS_DENIED");
       
       const text = await response.text();
       let parsedData: LogEntry[] = [];
       
-      // Basic CSV/LAS Ingest logic
+      // Resilient CSV / LAS parsing
       if (remoteUrl.toLowerCase().endsWith('.csv') || text.includes(',')) {
-        const lines = text.split('\n').filter(l => l.trim() !== '');
+        // Fix: Use RegExp.test instead of String.includes which doesn't accept RegExp
+        const lines = text.split('\n').filter(l => l.trim() !== '' && !/[a-zA-Z]/.test(l)); // Skip headers
         lines.forEach(line => {
           const parts = line.split(',').map(p => parseFloat(p.trim()));
           if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -109,10 +171,10 @@ const GhostSync: React.FC = () => {
           }
         });
       } else if (remoteUrl.toLowerCase().endsWith('.las') || text.includes('~ASCII')) {
-        // Simple LAS parser simulation (looking for data section)
-        const dataPart = text.split('~A')[1];
-        if (dataPart) {
-          const lines = dataPart.split('\n').filter(l => l.trim() !== '' && !l.includes('~'));
+        const sections = text.split('~');
+        const asciiSection = sections.find(s => s.startsWith('A') || s.startsWith('ASCII'));
+        if (asciiSection) {
+          const lines = asciiSection.split('\n').filter(l => l.trim() !== '' && !l.includes('A'));
           lines.forEach(line => {
             const parts = line.trim().split(/\s+/).map(p => parseFloat(p));
             if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -122,33 +184,32 @@ const GhostSync: React.FC = () => {
         }
       }
 
-      // Fallback for demonstration if URL is valid but content isn't parsable or for cross-origin issues
       if (parsedData.length === 0) {
-        setValidationError("PROTOCOL_WARN: NO PARSABLE ASCII DATA. SIMULATING TRACE.");
-        parsedData = MOCK_GHOST_LOG.map(d => ({ ...d, gr: d.gr + (Math.random() - 0.5) * 10 }));
+        setValidationError("FETCH_WARN: NO COMPATIBLE DATA FOUND. INJECTING MOCK TRACE.");
+        parsedData = MOCK_GHOST_LOG.map(d => ({ ...d, gr: d.gr + (Math.random() - 0.5) * 12 }));
       }
 
-      const newId = `SIG-EXT-${Math.floor(Math.random() * 1000)}`;
+      const newId = `SIG-EXT-${Math.floor(Math.random() * 9999)}`;
       const newSignal: SignalMetadata = {
         id: newId,
-        name: 'REMOTE_SOURCE_TRACE',
+        name: `REMOTE_${remoteUrl.split('/').pop()?.substring(0, 12) || 'SOURCE'}`,
         type: 'GR',
-        source: remoteUrl.split('/').pop() || 'REMOTE_FILE',
+        source: remoteUrl,
         samples: parsedData.length,
         depthRange: `${parsedData[0]?.depth.toFixed(0)} - ${parsedData[parsedData.length-1]?.depth.toFixed(0)}m`,
-        color: '#22d3ee',
+        color: ['#22d3ee', '#f472b6', '#fbbf24', '#a78bfa'][Math.floor(Math.random() * 4)],
         visible: true
       };
 
       setSignals(prev => [...prev, newSignal]);
       setSignalDataMap(prev => ({ ...prev, [newId]: parsedData }));
-      setValidationError("INGEST_COMPLETE: REMOTE DATA INTEGRATED.");
+      setValidationError(`INTEGRATION_SUCCESS: ${newSignal.name} ACTIVE.`);
       setShowRemoteInput(false);
       setRemoteUrl('');
       triggerShake();
 
     } catch (error) {
-      setValidationError("INGEST_ERROR: REMOTE_UNREACHABLE_OR_CORS_BLOCKED");
+      setValidationError("FETCH_ERROR: RESOURCE UNREACHABLE (CORS_POLICY)");
     } finally {
       setIsFetchingRemote(false);
     }
@@ -192,7 +253,6 @@ const GhostSync: React.FC = () => {
     return baseLog.map((base) => {
       const targetDepth = base.depth + offset;
       
-      // Calculate diff specifically between base and primary ghost
       const ghostEntry = ghostLog.reduce((prev, curr) => 
         Math.abs(curr.depth - targetDepth) < Math.abs(prev.depth - targetDepth) ? curr : prev,
         ghostLog[0] || { depth: 0, gr: 0 }
@@ -205,7 +265,6 @@ const GhostSync: React.FC = () => {
         diff: Math.abs(base.gr - ghostEntry.gr)
       };
 
-      // Handle extra external signals
       signals.forEach(sig => {
         if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
           const data = signalDataMap[sig.id] || [];
@@ -253,18 +312,28 @@ const GhostSync: React.FC = () => {
               <button onClick={() => setViewMode('OVERLAY')} className={`px-3 py-1.5 rounded text-[9px] font-black uppercase transition-all ${viewMode === 'OVERLAY' ? 'bg-emerald-500 text-slate-950' : 'text-emerald-800 hover:text-emerald-500'}`}>Overlay</button>
               <button onClick={() => setViewMode('DIFFERENTIAL')} className={`px-3 py-1.5 rounded text-[9px] font-black uppercase transition-all ${viewMode === 'DIFFERENTIAL' ? 'bg-orange-500 text-slate-950' : 'text-emerald-800 hover:text-orange-500'}`}>Diff</button>
            </div>
-           <button 
-             onClick={triggerAutoLineup} 
-             disabled={isAutoAligning}
-             className={`flex items-center space-x-2 px-6 py-2 rounded font-black text-[10px] uppercase tracking-widest transition-all ${isAutoAligning ? 'bg-orange-500/20 text-orange-500 cursor-wait' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]'}`}
-           >
-             {isAutoAligning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
-             <span>Auto_Lineup</span>
-           </button>
+           
+           <div className="flex items-center space-x-1 bg-slate-950/90 border border-emerald-900/40 rounded p-1 shadow-xl">
+              <button 
+                onClick={handleExportPNG}
+                disabled={isExporting}
+                title="Export High-Res PNG"
+                className={`p-2 rounded text-emerald-500 hover:bg-emerald-500/10 transition-all ${isExporting ? 'animate-pulse opacity-50' : ''}`}
+              >
+                <Camera size={16} />
+              </button>
+              <button 
+                onClick={triggerAutoLineup} 
+                disabled={isAutoAligning}
+                className={`flex items-center space-x-2 px-6 py-2 rounded font-black text-[10px] uppercase tracking-widest transition-all ${isAutoAligning ? 'bg-orange-500/20 text-orange-500 cursor-wait' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]'}`}
+              >
+                {isAutoAligning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
+                <span>Auto_Lineup</span>
+              </button>
+           </div>
         </div>
       </div>
 
-      {/* Modular Desktop Layout */}
       <div className="flex-1 min-h-0 flex space-x-3">
         
         {/* Module A: Signal Inventory Sidebar */}
@@ -289,7 +358,7 @@ const GhostSync: React.FC = () => {
                    )}
                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2 truncate">
-                         <div className={`w-1.5 h-1.5 rounded-full ${isAutoAligning ? 'animate-pulse bg-orange-500' : correlationScore > 95 ? 'bg-emerald-500' : 'bg-emerald-900'}`}></div>
+                         <div className={`w-1.5 h-1.5 rounded-full ${isAutoAligning ? 'animate-pulse bg-orange-500' : correlationScore > 95 ? 'bg-emerald-500' : 'bg-emerald-950'}`}></div>
                          <span className="text-[10px] font-black text-emerald-100 truncate">{sig.name}</span>
                       </div>
                       <button 
@@ -315,63 +384,90 @@ const GhostSync: React.FC = () => {
 
             <div className="mt-4 pt-4 border-t border-emerald-900/20">
                {showRemoteInput ? (
-                 <div className="space-y-2 animate-in slide-in-from-bottom-2">
-                   <div className="flex items-center space-x-2 bg-slate-900 border border-emerald-500/30 rounded p-1">
-                     <Globe size={14} className="text-emerald-500 ml-2" />
+                 <div className="space-y-3 animate-in slide-in-from-bottom-2 duration-300">
+                   <div className="flex flex-col space-y-2 bg-slate-900 border border-emerald-500/30 rounded-lg p-3">
+                     <div className="flex items-center space-x-2 text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-1">
+                        <LinkIcon size={12} />
+                        <span>Remote_Telemetry_URL</span>
+                     </div>
                      <input 
                        type="text" 
-                       placeholder="URL (.LAS / .CSV)"
+                       placeholder="https://source.ndr/trace.las"
                        value={remoteUrl}
                        onChange={(e) => setRemoteUrl(e.target.value)}
-                       className="bg-transparent border-none text-[10px] text-emerald-100 outline-none flex-1 p-2 font-mono"
+                       className="bg-slate-950 border border-emerald-900/50 rounded px-3 py-2 text-[10px] text-emerald-100 outline-none w-full font-mono placeholder:text-emerald-900 focus:border-emerald-500 transition-all"
                      />
-                     <button 
-                        onClick={handleRemoteIngest}
-                        disabled={isFetchingRemote || !remoteUrl}
-                        className="p-2 bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 disabled:opacity-50"
-                     >
-                       {isFetchingRemote ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
-                     </button>
+                     <div className="flex space-x-2 mt-2">
+                        <button 
+                           onClick={handleRemoteIngest}
+                           disabled={isFetchingRemote || !remoteUrl}
+                           className="flex-1 py-2.5 bg-emerald-500 text-slate-950 rounded font-black text-[9px] uppercase tracking-widest hover:bg-emerald-400 disabled:opacity-50 flex items-center justify-center space-x-2 shadow-lg"
+                        >
+                          {isFetchingRemote ? <Loader2 size={12} className="animate-spin" /> : <SendHorizontal size={12} />}
+                          <span>Submit</span>
+                        </button>
+                        <button 
+                          onClick={() => setShowRemoteInput(false)}
+                          className="px-3 py-2.5 bg-slate-950 border border-emerald-900/50 text-emerald-800 rounded font-black text-[9px] uppercase tracking-widest hover:text-emerald-500 transition-all"
+                        >
+                           {/* Fix: Added missing X icon import */}
+                           <X size={12} />
+                        </button>
+                     </div>
                    </div>
-                   <button 
-                     onClick={() => setShowRemoteInput(false)}
-                     className="w-full py-1 text-[8px] font-black text-emerald-900 hover:text-emerald-400 uppercase tracking-[0.2em]"
-                   >
-                     Cancel Remote Ingest
-                   </button>
                  </div>
                ) : (
                  <button 
                     onClick={() => setShowRemoteInput(true)}
-                    className="w-full py-2 bg-slate-900 border border-emerald-900/30 text-[9px] font-black text-emerald-800 uppercase tracking-widest hover:text-emerald-400 hover:border-emerald-500/50 transition-all flex items-center justify-center space-x-2 group"
+                    className="w-full py-3 bg-slate-900 border border-emerald-900/30 text-[10px] font-black text-emerald-800 uppercase tracking-widest hover:text-emerald-400 hover:border-emerald-500/50 transition-all flex items-center justify-center space-x-3 group"
                  >
-                    <Globe size={12} className="group-hover:animate-pulse" />
-                    <span>Ingest_Remote_Source</span>
+                    <Globe size={14} className="group-hover:animate-pulse" />
+                    <span>Fetch Remote Data</span>
                  </button>
                )}
             </div>
           </div>
 
-          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 space-y-4">
-             <div className="flex items-center space-x-2">
-                <Sliders size={12} className="text-emerald-700" />
-                <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">Micro_Shifter</span>
+          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 space-y-5 shadow-2xl relative overflow-hidden group/elevation">
+             <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none group-hover/elevation:opacity-20 transition-opacity">
+                <MoveVertical size={48} className="text-emerald-500" />
              </div>
-             <div className="flex space-x-2">
-                <button onClick={() => handleOffsetChange(offset - 0.01)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 rounded text-xs transition-all">-0.01</button>
-                <button onClick={() => setOffset(0)} className="px-4 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 rounded text-[9px] font-black uppercase"><RotateCw size={12} /></button>
-                <button onClick={() => handleOffsetChange(offset + 0.01)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 rounded text-xs transition-all">+0.01</button>
+             
+             <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                   <Sliders size={14} className="text-emerald-500" />
+                   <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Elevation_Shift</span>
+                </div>
+                <span className={`text-[10px] font-terminal font-black ${Math.abs(offset) > CAUTION_LIMIT ? 'text-orange-500' : 'text-emerald-500'}`}>
+                   {offset >= 0 ? '+' : ''}{offset.toFixed(3)}m
+                </span>
              </div>
-             <input 
-                type="range" min={-HARD_LIMIT} max={HARD_LIMIT} step="0.1" value={offset} 
-                onChange={(e) => setOffset(parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-slate-900 appearance-none rounded-full accent-emerald-500 cursor-pointer"
-             />
+
+             <div className="flex space-x-1.5">
+                <button onClick={() => handleOffsetChange(offset - 1.0)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">-1.0</button>
+                <button onClick={() => handleOffsetChange(offset - 0.1)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">-0.1</button>
+                <button onClick={() => setOffset(0)} title="Reset Alignment" className="px-4 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-900 hover:text-emerald-400 rounded transition-all"><RotateCw size={12} /></button>
+                <button onClick={() => handleOffsetChange(offset + 0.1)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">+0.1</button>
+                <button onClick={() => handleOffsetChange(offset + 1.0)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">+1.0</button>
+             </div>
+
+             <div className="relative pt-2">
+                <div className="absolute -top-1 left-0 right-0 flex justify-between text-[7px] font-black text-emerald-900 tracking-tighter uppercase px-1">
+                   <span>-50m</span>
+                   <span>Datum_0</span>
+                   <span>+50m</span>
+                </div>
+                <input 
+                   type="range" min={-HARD_LIMIT} max={HARD_LIMIT} step="0.01" value={offset} 
+                   onChange={(e) => setOffset(parseFloat(e.target.value))}
+                   className="w-full h-2 bg-slate-900 appearance-none rounded-full accent-emerald-500 cursor-pointer border border-emerald-900/10 shadow-inner"
+                />
+             </div>
           </div>
         </div>
         
         {/* Module B: Sync Monitor */}
-        <div className="flex-[2] bg-slate-950/80 rounded-xl border border-emerald-900/20 p-4 relative group overflow-hidden flex flex-col">
+        <div ref={chartContainerRef} className="flex-[2] bg-slate-950/80 rounded-xl border border-emerald-900/20 p-4 relative group overflow-hidden flex flex-col">
            <div className="absolute top-4 left-4 z-20 flex flex-col space-y-1">
               <div className="flex items-center space-x-2 bg-slate-900/90 border border-emerald-900/40 px-3 py-1 rounded">
                 <Target size={12} className="text-emerald-500" />
@@ -383,15 +479,6 @@ const GhostSync: React.FC = () => {
                 </div>
               )}
            </div>
-
-           {isFetchingRemote && (
-             <div className="absolute inset-0 z-40 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center">
-                <div className="flex flex-col items-center">
-                   <div className="w-12 h-12 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-                   <span className="text-[10px] font-black text-emerald-400 mt-4 tracking-[0.5em] uppercase">Downloading_Remote_Array</span>
-                </div>
-             </div>
-           )}
 
            <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -415,7 +502,6 @@ const GhostSync: React.FC = () => {
                    {signals.find(s => s.id === 'SIG-002')?.visible && (
                      <Line type="monotone" dataKey="ghostGR" stroke="#FF5F1F" dot={false} strokeWidth={2.5} strokeDasharray="5 3" isAnimationActive={false} />
                    )}
-                   {/* Dynamically render extra signals */}
                    {signals.map(sig => {
                      if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
                        return (
@@ -439,7 +525,7 @@ const GhostSync: React.FC = () => {
 
         {/* Module C: Delta Engine Sidebar */}
         <div className="w-72 flex flex-col space-y-3">
-          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 flex flex-col justify-between">
+          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 flex flex-col justify-between shadow-2xl">
              <div className="flex items-center justify-between mb-4">
                 <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Diagnostic_Result</span>
                 <Cpu size={14} className="text-emerald-700" />
@@ -447,8 +533,10 @@ const GhostSync: React.FC = () => {
              
              <div className="space-y-6">
                 <div>
-                   <div className="text-[9px] text-emerald-700 font-black uppercase mb-1">Offset_Shift</div>
-                   <div className="text-4xl font-black text-emerald-400 font-terminal tracking-tighter">{offset.toFixed(2)}m</div>
+                   <div className="text-[9px] text-emerald-700 font-black uppercase mb-1">Datum_Discordance</div>
+                   <div className={`text-4xl font-black font-terminal tracking-tighter ${Math.abs(offset) > CAUTION_LIMIT ? 'text-orange-500' : 'text-emerald-400'}`}>
+                      {offset.toFixed(2)}m
+                   </div>
                 </div>
 
                 <div>
@@ -468,9 +556,9 @@ const GhostSync: React.FC = () => {
              </div>
           </div>
 
-          <div className="flex-1 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col overflow-hidden">
+          <div className="flex-1 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col overflow-hidden shadow-2xl">
              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Delta_Engine</span>
+                <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Spectral_Entropy</span>
                 <Activity size={12} className="text-emerald-700" />
              </div>
              <div className="flex-1 min-h-0">
@@ -496,6 +584,10 @@ const GhostSync: React.FC = () => {
                <Hash size={12} className="text-emerald-900" />
                <span className="text-[9px] text-emerald-900 uppercase font-black">TRACE_GUID: LOCK_0XF</span>
             </div>
+         </div>
+         <div className="flex items-center space-x-2">
+            <ScanLine size={12} className="text-emerald-900" />
+            <span className="text-[8px] text-emerald-900 font-black uppercase">Datum_Verified_By_Brahan</span>
          </div>
       </div>
 
