@@ -1,3 +1,4 @@
+
 import { NDRProject } from '../types';
 import { MOCK_NDR_PROJECTS } from '../constants';
 
@@ -18,14 +19,14 @@ export async function authenticateNDR() {
 
 /**
  * Searches the NDR Metadata API for projects.
- * Enhanced to identify 'Data Ghosts' (Datum Shifts) via a simulated metadata flag analysis.
+ * Enhanced to identify 'Data Ghosts' (Datum Shifts) and 'Barrier Integrity Artifacts'.
  */
 export async function searchNDRMetadata(query: string, status?: string, type?: string, ghostOnly?: boolean): Promise<NDRProject[]> {
   await new Promise(r => setTimeout(r, 1200)); // Simulate API latency
   
   const normalizedQuery = query.toLowerCase();
   
-  // Simulate a forensic metadata crawl where we check for specific 'datum-discordance' flags in the NDR graph
+  // Simulate a forensic metadata crawl for specific petrophysical or integrity flags
   console.log(`NDR_METADATA_API: Crawling for ${ghostOnly ? 'DATUM_SHIFT_ANOMALIES' : 'STANDARD_PROJECTS'}...`);
   
   return MOCK_NDR_PROJECTS.filter(p => {

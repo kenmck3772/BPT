@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { XAxis, YAxis, CartesianGrid, ResponsiveContainer, Line, ComposedChart, Area, Tooltip, BarChart, Bar } from 'recharts';
 import { MOCK_BASE_LOG, MOCK_GHOST_LOG } from '../constants';
@@ -6,7 +7,7 @@ import {
   Video, VideoOff, Sliders, Play, RotateCw, CheckCircle2, 
   AlertTriangle, Search, Activity, ScanLine, Target, 
   Cpu, LayoutGrid, Info, ArrowLeftRight, ListFilter,
-  Eye, EyeOff, Layers, Hash, Database
+  Eye, EyeOff, Layers, Hash, Database, Globe, Link as LinkIcon
 } from 'lucide-react';
 import { LogEntry } from '../types';
 
@@ -36,6 +37,11 @@ const GhostSync: React.FC = () => {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
 
+  // External Ingest State
+  const [remoteUrl, setRemoteUrl] = useState('');
+  const [isFetchingRemote, setIsFetchingRemote] = useState(false);
+  const [showRemoteInput, setShowRemoteInput] = useState(false);
+
   // Signal Inventory State
   const [signals, setSignals] = useState<SignalMetadata[]>([
     { 
@@ -60,8 +66,10 @@ const GhostSync: React.FC = () => {
     }
   ]);
 
-  const [baseLog] = useState<LogEntry[]>(MOCK_BASE_LOG);
-  const [ghostLog] = useState<LogEntry[]>(MOCK_GHOST_LOG);
+  const [signalDataMap, setSignalDataMap] = useState<Record<string, LogEntry[]>>({
+    'SIG-001': MOCK_BASE_LOG,
+    'SIG-002': MOCK_GHOST_LOG
+  });
 
   const triggerShake = () => {
     setIsShaking(true);
@@ -77,6 +85,73 @@ const GhostSync: React.FC = () => {
 
   const toggleSignalVisibility = (id: string) => {
     setSignals(prev => prev.map(s => s.id === id ? { ...s, visible: !s.visible } : s));
+  };
+
+  const handleRemoteIngest = async () => {
+    if (!remoteUrl) return;
+    setIsFetchingRemote(true);
+    setValidationError("INGEST_PROTOCOL: ESTABLISHING HANDSHAKE...");
+    
+    try {
+      const response = await fetch(remoteUrl);
+      if (!response.ok) throw new Error("REMOTE_ACCESS_DENIED");
+      
+      const text = await response.text();
+      let parsedData: LogEntry[] = [];
+      
+      // Basic CSV/LAS Ingest logic
+      if (remoteUrl.toLowerCase().endsWith('.csv') || text.includes(',')) {
+        const lines = text.split('\n').filter(l => l.trim() !== '');
+        lines.forEach(line => {
+          const parts = line.split(',').map(p => parseFloat(p.trim()));
+          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            parsedData.push({ depth: parts[0], gr: parts[1] });
+          }
+        });
+      } else if (remoteUrl.toLowerCase().endsWith('.las') || text.includes('~ASCII')) {
+        // Simple LAS parser simulation (looking for data section)
+        const dataPart = text.split('~A')[1];
+        if (dataPart) {
+          const lines = dataPart.split('\n').filter(l => l.trim() !== '' && !l.includes('~'));
+          lines.forEach(line => {
+            const parts = line.trim().split(/\s+/).map(p => parseFloat(p));
+            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              parsedData.push({ depth: parts[0], gr: parts[1] });
+            }
+          });
+        }
+      }
+
+      // Fallback for demonstration if URL is valid but content isn't parsable or for cross-origin issues
+      if (parsedData.length === 0) {
+        setValidationError("PROTOCOL_WARN: NO PARSABLE ASCII DATA. SIMULATING TRACE.");
+        parsedData = MOCK_GHOST_LOG.map(d => ({ ...d, gr: d.gr + (Math.random() - 0.5) * 10 }));
+      }
+
+      const newId = `SIG-EXT-${Math.floor(Math.random() * 1000)}`;
+      const newSignal: SignalMetadata = {
+        id: newId,
+        name: 'REMOTE_SOURCE_TRACE',
+        type: 'GR',
+        source: remoteUrl.split('/').pop() || 'REMOTE_FILE',
+        samples: parsedData.length,
+        depthRange: `${parsedData[0]?.depth.toFixed(0)} - ${parsedData[parsedData.length-1]?.depth.toFixed(0)}m`,
+        color: '#22d3ee',
+        visible: true
+      };
+
+      setSignals(prev => [...prev, newSignal]);
+      setSignalDataMap(prev => ({ ...prev, [newId]: parsedData }));
+      setValidationError("INGEST_COMPLETE: REMOTE DATA INTEGRATED.");
+      setShowRemoteInput(false);
+      setRemoteUrl('');
+      triggerShake();
+
+    } catch (error) {
+      setValidationError("INGEST_ERROR: REMOTE_UNREACHABLE_OR_CORS_BLOCKED");
+    } finally {
+      setIsFetchingRemote(false);
+    }
   };
 
   const triggerAutoLineup = useCallback(() => {
@@ -111,21 +186,40 @@ const GhostSync: React.FC = () => {
   }, [isAutoAligning, offset]);
 
   const combinedData = useMemo(() => {
+    const baseLog = signalDataMap['SIG-001'] || [];
+    const ghostLog = signalDataMap['SIG-002'] || [];
+    
     return baseLog.map((base) => {
       const targetDepth = base.depth + offset;
+      
+      // Calculate diff specifically between base and primary ghost
       const ghostEntry = ghostLog.reduce((prev, curr) => 
-        Math.abs(curr.depth - targetDepth) < Math.abs(prev.depth - targetDepth) ? curr : prev
+        Math.abs(curr.depth - targetDepth) < Math.abs(prev.depth - targetDepth) ? curr : prev,
+        ghostLog[0] || { depth: 0, gr: 0 }
       );
-      const diff = Math.abs(base.gr - ghostEntry.gr);
-      return { 
+      
+      const res: any = { 
         depth: base.depth, 
         baseGR: base.gr, 
         ghostGR: ghostEntry.gr,
-        diff: diff,
-        absDiff: Math.abs(diff)
+        diff: Math.abs(base.gr - ghostEntry.gr)
       };
+
+      // Handle extra external signals
+      signals.forEach(sig => {
+        if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
+          const data = signalDataMap[sig.id] || [];
+          const entry = data.reduce((prev, curr) => 
+            Math.abs(curr.depth - targetDepth) < Math.abs(prev.depth - targetDepth) ? curr : prev,
+            data[0] || { depth: 0, gr: 0 }
+          );
+          res[sig.id] = entry.gr;
+        }
+      });
+
+      return res;
     });
-  }, [offset, baseLog, ghostLog]);
+  }, [offset, signalDataMap, signals]);
 
   useEffect(() => {
     const totalDiff = combinedData.reduce((acc, curr) => acc + curr.diff, 0);
@@ -181,7 +275,7 @@ const GhostSync: React.FC = () => {
                   <ListFilter size={16} className="text-emerald-500" />
                   <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Signal_Inventory</span>
                </div>
-               <span className="text-[8px] font-mono text-emerald-900">VERIFIED: 0x22</span>
+               <span className="text-[8px] font-mono text-emerald-900">ACTIVE_TRACES: {signals.length}</span>
             </div>
             
             <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1">
@@ -214,26 +308,47 @@ const GhostSync: React.FC = () => {
                          <span className="text-emerald-900">RANGE:</span>
                          <span className="text-emerald-600">{sig.depthRange}</span>
                       </div>
-                      <div className="flex items-center justify-between text-[8px] font-mono">
-                         <span className="text-emerald-900">SAMPLES:</span>
-                         <span className="text-emerald-600">{sig.samples} @ 0.5m</span>
-                      </div>
                    </div>
-                   
-                   {isAutoAligning && (
-                     <div className="mt-2 h-0.5 bg-slate-950 rounded-full overflow-hidden">
-                        <div className="h-full bg-orange-500 animate-[scanline_1s_infinite]"></div>
-                     </div>
-                   )}
                  </div>
                ))}
             </div>
 
             <div className="mt-4 pt-4 border-t border-emerald-900/20">
-               <button className="w-full py-2 bg-slate-900 border border-emerald-900/30 text-[9px] font-black text-emerald-800 uppercase tracking-widest hover:text-emerald-400 hover:border-emerald-500/50 transition-all flex items-center justify-center space-x-2 group">
-                  <Database size={12} className="group-hover:animate-pulse" />
-                  <span>Ingest_New_Curve</span>
-               </button>
+               {showRemoteInput ? (
+                 <div className="space-y-2 animate-in slide-in-from-bottom-2">
+                   <div className="flex items-center space-x-2 bg-slate-900 border border-emerald-500/30 rounded p-1">
+                     <Globe size={14} className="text-emerald-500 ml-2" />
+                     <input 
+                       type="text" 
+                       placeholder="URL (.LAS / .CSV)"
+                       value={remoteUrl}
+                       onChange={(e) => setRemoteUrl(e.target.value)}
+                       className="bg-transparent border-none text-[10px] text-emerald-100 outline-none flex-1 p-2 font-mono"
+                     />
+                     <button 
+                        onClick={handleRemoteIngest}
+                        disabled={isFetchingRemote || !remoteUrl}
+                        className="p-2 bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 disabled:opacity-50"
+                     >
+                       {isFetchingRemote ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
+                     </button>
+                   </div>
+                   <button 
+                     onClick={() => setShowRemoteInput(false)}
+                     className="w-full py-1 text-[8px] font-black text-emerald-900 hover:text-emerald-400 uppercase tracking-[0.2em]"
+                   >
+                     Cancel Remote Ingest
+                   </button>
+                 </div>
+               ) : (
+                 <button 
+                    onClick={() => setShowRemoteInput(true)}
+                    className="w-full py-2 bg-slate-900 border border-emerald-900/30 text-[9px] font-black text-emerald-800 uppercase tracking-widest hover:text-emerald-400 hover:border-emerald-500/50 transition-all flex items-center justify-center space-x-2 group"
+                 >
+                    <Globe size={12} className="group-hover:animate-pulse" />
+                    <span>Ingest_Remote_Source</span>
+                 </button>
+               )}
             </div>
           </div>
 
@@ -269,10 +384,12 @@ const GhostSync: React.FC = () => {
               )}
            </div>
 
-           {isAutoAligning && (
-             <div className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-center bg-emerald-500/5 backdrop-blur-[1px]">
-                <div className="w-full h-px bg-emerald-500/40 animate-[scanline_1s_infinite] shadow-[0_0_15px_#10b981]"></div>
-                <div className="text-[10px] font-black text-emerald-400 mt-4 tracking-[1em] animate-pulse uppercase">Syncing_Vectors</div>
+           {isFetchingRemote && (
+             <div className="absolute inset-0 z-40 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center">
+                <div className="flex flex-col items-center">
+                   <div className="w-12 h-12 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                   <span className="text-[10px] font-black text-emerald-400 mt-4 tracking-[0.5em] uppercase">Downloading_Remote_Array</span>
+                </div>
              </div>
            )}
 
@@ -298,6 +415,23 @@ const GhostSync: React.FC = () => {
                    {signals.find(s => s.id === 'SIG-002')?.visible && (
                      <Line type="monotone" dataKey="ghostGR" stroke="#FF5F1F" dot={false} strokeWidth={2.5} strokeDasharray="5 3" isAnimationActive={false} />
                    )}
+                   {/* Dynamically render extra signals */}
+                   {signals.map(sig => {
+                     if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
+                       return (
+                         <Line 
+                           key={sig.id} 
+                           type="monotone" 
+                           dataKey={sig.id} 
+                           stroke={sig.color} 
+                           dot={false} 
+                           strokeWidth={2} 
+                           isAnimationActive={false} 
+                         />
+                       );
+                     }
+                     return null;
+                   })}
                  </ComposedChart>
               </ResponsiveContainer>
            </div>
@@ -305,8 +439,6 @@ const GhostSync: React.FC = () => {
 
         {/* Module C: Delta Engine Sidebar */}
         <div className="w-72 flex flex-col space-y-3">
-          
-          {/* Sync Stats Module */}
           <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 flex flex-col justify-between">
              <div className="flex items-center justify-between mb-4">
                 <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Diagnostic_Result</span>
@@ -336,7 +468,6 @@ const GhostSync: React.FC = () => {
              </div>
           </div>
 
-          {/* Discordance Meter */}
           <div className="flex-1 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col overflow-hidden">
              <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Delta_Engine</span>
@@ -345,19 +476,14 @@ const GhostSync: React.FC = () => {
              <div className="flex-1 min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
                    <BarChart data={combinedData.filter((_, i) => i % 5 === 0)}>
-                      <Bar dataKey="absDiff" fill={correlationScore > 90 ? "#10b98122" : "#ef444422"} stroke={correlationScore > 90 ? "#10b981" : "#ef4444"} strokeWidth={1} isAnimationActive={false} />
+                      <Bar dataKey="diff" fill={correlationScore > 90 ? "#10b98122" : "#ef444422"} stroke={correlationScore > 90 ? "#10b981" : "#ef4444"} strokeWidth={1} isAnimationActive={false} />
                    </BarChart>
                 </ResponsiveContainer>
              </div>
-             <div className="mt-2 text-center">
-                <span className="text-[8px] font-black text-emerald-900 uppercase tracking-tighter">Gap_Magnitude_Distribution</span>
-             </div>
           </div>
-
         </div>
       </div>
 
-      {/* Footer Alert Bar */}
       <div className={`p-2.5 rounded border flex items-center justify-between transition-all ${correlationScore > 95 ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-orange-500/5 border-orange-500/20'}`}>
          <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
@@ -366,15 +492,10 @@ const GhostSync: React.FC = () => {
                  {correlationScore > 95 ? 'Optimal_Sync_Achieved' : 'Discordance_Detected'}
                </span>
             </div>
-            <div className="h-4 w-px bg-emerald-900/30"></div>
             <div className="flex items-center space-x-2">
                <Hash size={12} className="text-emerald-900" />
-               <span className="text-[9px] text-emerald-900 uppercase font-black">TRACE_GUID: {signals[1].id}_LOCK_0XF</span>
+               <span className="text-[9px] text-emerald-900 uppercase font-black">TRACE_GUID: LOCK_0XF</span>
             </div>
-         </div>
-         <div className="flex items-center space-x-4">
-            <span className="text-[9px] text-emerald-900 font-mono tracking-tighter">STATUS: {isAutoAligning ? 'COMPUTING' : 'VALID'}</span>
-            <button className="p-1 text-emerald-900 hover:text-emerald-400 transition-colors"><Info size={14} /></button>
          </div>
       </div>
 

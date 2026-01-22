@@ -13,6 +13,7 @@ export interface TraumaData {
   wallLoss: number;
   waterLeakage: number;
   stress: number;
+  ici: number;
 }
 
 export interface TraumaEvent {
@@ -28,6 +29,18 @@ export interface TraumaEvent {
 export interface PressureData {
   timestamp: string;
   pressure: number;
+  isHistorical?: boolean;
+}
+
+export interface BarrierEvent {
+  id: string;
+  date: string;
+  type: 'TOPUP' | 'BLEED' | 'TEST' | 'SQUEEZE' | 'BREACH';
+  annulus: 'A' | 'B' | 'C';
+  summary: string;
+  volume?: number;
+  unit?: string;
+  severity: 'CRITICAL' | 'MAINTENANCE' | 'INFO';
 }
 
 export interface AnalysisResult {
@@ -56,6 +69,7 @@ export interface NDRProject {
   sizeGb: number;
   sha512: string;
   hasDatumShiftIssues?: boolean;
+  hasIntegrityRecords?: boolean;
 }
 
 export interface TubingItem {
@@ -92,5 +106,6 @@ export enum TraumaLayer {
   TEMPERATURE = 'TEMPERATURE',
   WALL_LOSS = 'WALL_LOSS',
   WATER_LEAKAGE = 'WATER_LEAKAGE',
-  STRESS = 'STRESS'
+  STRESS = 'STRESS',
+  ICI = 'ICI'
 }

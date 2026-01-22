@@ -1,5 +1,5 @@
 
-import { LogEntry, TraumaData, PressureData, NDRProject, TubingItem, WellReport } from './types';
+import { LogEntry, TraumaData, PressureData, NDRProject, TubingItem, WellReport, BarrierEvent } from './types';
 
 // Mock Log Data for Ghost-Sync
 export const MOCK_BASE_LOG: LogEntry[] = Array.from({ length: 100 }, (_, i) => ({
@@ -11,6 +11,26 @@ export const MOCK_GHOST_LOG: LogEntry[] = MOCK_BASE_LOG.map(entry => ({
   depth: entry.depth + 14.5, // 14.5m offset
   gr: entry.gr + (Math.random() - 0.5) * 5
 }));
+
+// Mock Historical Barrier Records
+export const MOCK_HISTORICAL_BARRIER_LOGS: BarrierEvent[] = [
+  { id: 'BE-2012-01', date: '2012-04-12', type: 'SQUEEZE', annulus: 'A', summary: 'Scale squeeze operation. Injected 50bbl inhibitor.', severity: 'INFO' },
+  { id: 'BE-2015-04', date: '2015-08-20', type: 'TEST', annulus: 'A', summary: 'Annual barrier test. 5000 PSI / 30 mins. PASSED.', severity: 'MAINTENANCE' },
+  { id: 'BE-2018-09', date: '2018-11-02', type: 'TOPUP', annulus: 'B', summary: 'B-Annulus low pressure. Topped up with 15bbl brine.', severity: 'MAINTENANCE', volume: 15, unit: 'bbl' },
+  { id: 'BE-2021-02', date: '2021-03-15', type: 'BREACH', annulus: 'A', summary: 'First sustained pressure detected. Cross-flow suspect.', severity: 'CRITICAL' },
+  { id: 'BE-2023-11', date: '2023-12-05', type: 'TOPUP', annulus: 'A', summary: 'Aggressive top-up needed. Delta P rising.', severity: 'CRITICAL', volume: 45, unit: 'bbl' }
+];
+
+export const MOCK_SCAVENGED_PRESSURE_TESTS: PressureData[] = [
+  { timestamp: '00:00', pressure: 150, isHistorical: true },
+  { timestamp: '04:00', pressure: 250, isHistorical: true },
+  { timestamp: '08:00', pressure: 350, isHistorical: true },
+  { timestamp: '12:00', pressure: 450, isHistorical: true },
+  { timestamp: '12:01', pressure: 150, isHistorical: true },
+  { timestamp: '16:00', pressure: 250, isHistorical: true },
+  { timestamp: '20:00', pressure: 350, isHistorical: true },
+  { timestamp: '23:59', pressure: 450, isHistorical: true },
+];
 
 // Mock Tubing Tally
 export const MOCK_TUBING_TALLY: TubingItem[] = [
@@ -38,7 +58,8 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     type: 'well',
     sizeGb: 1.2,
     sha512: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    hasDatumShiftIssues: true
+    hasDatumShiftIssues: true,
+    hasIntegrityRecords: true
   },
   {
     projectId: 'TYRA2021well0042',
@@ -49,7 +70,8 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     type: 'well',
     sizeGb: 0.8,
     sha512: 'f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc2638bc',
-    hasDatumShiftIssues: false
+    hasDatumShiftIssues: false,
+    hasIntegrityRecords: true
   },
   {
     projectId: 'QUAD211-1992well0007',
@@ -61,17 +83,6 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     sizeGb: 4.5,
     sha512: '89a80e43d9426f0c43109a90e4f3a9e6e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8',
     hasDatumShiftIssues: true
-  },
-  {
-    projectId: 'DUNLIN1982well0015',
-    name: 'Dunlin Alpha Core',
-    quadrant: '211',
-    status: 'RELEASED',
-    releaseDate: '1989-02-14',
-    type: 'well',
-    sizeGb: 2.1,
-    sha512: 'a9b8c7d6e5f4g3h2i1j0k9l8m7n6o5p4q3r2s1t0u9v8w7x6y5z4a3b2c1d0e9f8',
-    hasDatumShiftIssues: false
   }
 ];
 
@@ -80,31 +91,32 @@ export const MOCK_TRAUMA_DATA: TraumaData[] = [];
 for (let d = 1240; d < 1250; d += 0.5) {
   for (let f = 1; f <= 40; f++) {
     let deviation = Math.random() * 0.5;
-    let corrosion = Math.random() * 15; // 0-100 index
-    let temperature = 60 + (d - 1240) * 2 + Math.random() * 5; // 60-80C range
-    let wallLoss = Math.random() * 5; // 0-25% range
-    let waterLeakage = Math.random() * 5; // 0-100 index
-    let stress = Math.random() * 10; // 0-100 index
+    let corrosion = Math.random() * 15; 
+    let temperature = 60 + (d - 1240) * 2 + Math.random() * 5; 
+    let wallLoss = Math.random() * 5; 
+    let waterLeakage = Math.random() * 5; 
+    let stress = Math.random() * 10; 
+    let ici = Math.random() * 20; 
 
-    // Simulate Thistle A7 "C-Lock" Scar at 1245.5m
     if (d === 1245.5 && f > 10 && f < 15) {
       deviation = 4.8;
-      corrosion = 72; // High corrosion at trauma site
-      temperature = 88; // Friction/Leak heat
-      wallLoss = 22; // Significant metal loss
-      waterLeakage = 92; // Massive hydraulic bypass
-      stress = 88; // Massive structural stress
+      corrosion = 72; 
+      temperature = 88; 
+      wallLoss = 22; 
+      waterLeakage = 92; 
+      stress = 88; 
+      ici = 95; 
     }
     
-    // Simulate some corrosion pitting elsewhere
     if (d === 1248.5 && f > 30 && f < 35) {
       corrosion = 45;
       wallLoss = 12;
       waterLeakage = 15;
       stress = 30;
+      ici = 55;
     }
 
-    MOCK_TRAUMA_DATA.push({ fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, waterLeakage, stress });
+    MOCK_TRAUMA_DATA.push({ fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, waterLeakage, stress, ici });
   }
 }
 
