@@ -100,7 +100,8 @@ export enum ActiveModule {
   TRAUMA_NODE = 'TRAUMA_NODE',
   PULSE_ANALYZER = 'PULSE_ANALYZER',
   REPORTS_SCANNER = 'REPORTS_SCANNER',
-  VAULT = 'VAULT'
+  VAULT = 'VAULT',
+  CERBERUS = 'CERBERUS'
 }
 
 export enum TraumaLayer {

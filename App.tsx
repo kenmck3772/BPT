@@ -5,19 +5,20 @@ import TraumaNode from './components/TraumaNode';
 import PulseAnalyzer from './components/PulseAnalyzer';
 import ReportsScanner from './components/ReportsScanner';
 import Vault from './components/Vault';
+import CerberusSimulator from './components/CerberusSimulator';
 import { ActiveModule, NDRProject, TraumaEvent } from './types';
 import { getForensicInsight } from './services/geminiService';
 import { searchNDRMetadata, harvestNDRProject } from './services/ndrService';
 import { generateSovereignAudit } from './reporting/pdfEngine';
 import { calculateLinearRegression, diagnoseSawtooth } from './forensic_logic/math';
-import { MOCK_PRESSURE_DATA } from './constants';
+import { MOCK_PRESSURE_DATA, MOCK_INTERVENTION_REPORTS, MOCK_TUBING_TALLY } from './constants';
 import { 
   Terminal, Activity, Database, Download, AlertCircle, 
   Search, Loader2, Box, Ghost, FileText, 
   Cpu, Wifi, Zap, CornerDownRight, Radio, Settings2, 
   Fingerprint, Power, LayoutGrid, Maximize2, Minimize2,
   ChevronLeft, ChevronRight, X, ShieldAlert, Sparkles,
-  FileSearch, Compass, MoveDown, RotateCw
+  FileSearch, Compass, MoveDown, RotateCw, ShieldCheck
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -92,20 +93,39 @@ const App: React.FC = () => {
   const handleExportAudit = async () => {
     setIsExportingAudit(true);
     try {
-      const traumaLogRaw = localStorage.getItem('BRAHAN_TRAUMA_LOG');
+      const traumaLogRaw = localStorage.getItem('BRAHAN_BLACK_BOX_LOGS');
       const traumaLog: TraumaEvent[] = traumaLogRaw ? JSON.parse(traumaLogRaw) : [];
+      
       const pressures = MOCK_PRESSURE_DATA.slice(0, 4).map(d => d.pressure);
-      const { rSquared } = calculateLinearRegression(pressures);
-      const pulseDiag = diagnoseSawtooth(rSquared);
+      const { rSquared, slope } = calculateLinearRegression(pressures);
+      const pulseDiag = diagnoseSawtooth(rSquared, slope);
+
+      // Detail Tally working
+      const totalTally = MOCK_TUBING_TALLY.reduce((acc, curr) => acc + curr.length_m, 0);
+      const report = MOCK_INTERVENTION_REPORTS[0];
+      const discordance = Math.abs(totalTally - report.eodDepth_m);
 
       await generateSovereignAudit({
         uwi: "THISTLE_A7_PROTOTYPE",
-        projectName: "THISTLE SLOT 7 FORENSIC",
+        projectName: "Thistle A7 Legacy",
+        projectId: "THISTLE1978well0001",
         sha512: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         offset: 14.5,
-        pulseDiagnosis: pulseDiag.status,
+        pulseDiagnosis: {
+          status: pulseDiag.status,
+          slope: slope,
+          rSquared: rSquared,
+          diagnosis: pulseDiag.diagnosis
+        },
         traumaLog: traumaLog,
-        timestamp: new Date().toISOString()
+        tallyAudit: {
+          reportId: report.reportId,
+          discordance: discordance,
+          totalTally: totalTally,
+          reportedDepth: report.eodDepth_m
+        },
+        timestamp: new Date().toISOString(),
+        forensicInsight: insight
       });
     } finally {
       setIsExportingAudit(false);
@@ -150,6 +170,7 @@ const App: React.FC = () => {
             { id: ActiveModule.GHOST_SYNC, icon: <Ghost size={14} />, label: 'GHOST_SYNC', desc: 'Alignment Engine' },
             { id: ActiveModule.TRAUMA_NODE, icon: <Box size={14} />, label: 'TRAUMA_NODE', desc: 'Structural Forensics' },
             { id: ActiveModule.PULSE_ANALYZER, icon: <Activity size={14} />, label: 'PULSE_ANALYZER', desc: 'Leak Diagnostic' },
+            { id: ActiveModule.CERBERUS, icon: <ShieldCheck size={14} />, label: 'CERBERUS', desc: 'Survival Simulator' },
             { id: ActiveModule.REPORTS_SCANNER, icon: <FileSearch size={14} />, label: 'REPORTS_SCANNER', desc: 'Report Audit' },
             { id: ActiveModule.VAULT, icon: <Database size={14} />, label: 'VAULT_CACHE', desc: 'Secure Archive' },
           ].map((item) => (
@@ -167,7 +188,6 @@ const App: React.FC = () => {
                 <span className="text-[9px] font-black uppercase tracking-widest">{item.label}</span>
               </button>
               
-              {/* Custom Pop-up Tooltip */}
               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-max px-3 py-1.5 bg-slate-950 border border-emerald-500/50 rounded shadow-[0_0_15px_rgba(16,185,129,0.2)] opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-[100] transform translate-y-2 group-hover:translate-y-0">
                 <div className="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-0.5">{item.label}</div>
                 <div className="text-[7px] font-mono text-emerald-700 uppercase whitespace-nowrap">{item.desc}</div>
@@ -232,7 +252,6 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              {/* Wellbore Type Segmented Control */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center px-1">
                   <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest">Wellbore_Schema</span>
@@ -322,6 +341,7 @@ const App: React.FC = () => {
               />
             )}
             {activeModule === ActiveModule.PULSE_ANALYZER && <PulseAnalyzer />}
+            {activeModule === ActiveModule.CERBERUS && <CerberusSimulator />}
             {activeModule === ActiveModule.REPORTS_SCANNER && <ReportsScanner />}
             {activeModule === ActiveModule.VAULT && <Vault />}
           </div>

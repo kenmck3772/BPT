@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Line, ComposedChart } from 'recharts';
 import { MOCK_PRESSURE_DATA, MOCK_HISTORICAL_BARRIER_LOGS, MOCK_SCAVENGED_PRESSURE_TESTS } from '../constants';
@@ -23,7 +22,7 @@ const PulseAnalyzer: React.FC = () => {
   
   const analysis = useMemo(() => {
     const { slope, rSquared } = calculateLinearRegression(pressures);
-    const diagnosis = diagnoseSawtooth(rSquared);
+    const diagnosis = diagnoseSawtooth(rSquared, slope);
     return { slope, rSquared, ...diagnosis };
   }, [pressures]);
 
@@ -162,7 +161,7 @@ const PulseAnalyzer: React.FC = () => {
                   <Activity size={12} className="text-emerald-700" />
                 </div>
                 <div className="text-2xl font-black text-emerald-100 font-terminal">{analysis.slope.toFixed(2)} PSI/U</div>
-                <div className="text-[8px] text-emerald-900 mt-1 uppercase font-black tracking-widest">DRIVE_FORCE: SUSTAINED</div>
+                <div className="text-[8px] text-emerald-900 mt-1 uppercase font-black tracking-widest">DRIVE_FORCE: {Math.abs(analysis.slope) > 5 ? 'SUSTAINED' : 'RESIDUAL'}</div>
              </div>
              <div className="p-4 bg-slate-950/80 border border-emerald-900/30 rounded-xl">
                 <div className="flex items-center justify-between mb-2">
@@ -170,7 +169,7 @@ const PulseAnalyzer: React.FC = () => {
                   <ShieldCheck size={12} className="text-emerald-700" />
                 </div>
                 <div className="text-2xl font-black text-emerald-100 font-terminal">{(analysis.rSquared * 100).toFixed(1)}%</div>
-                <div className="text-[8px] text-emerald-900 mt-1 uppercase font-black tracking-widest">R2_CONCORDANCE: HIGH</div>
+                <div className="text-[8px] text-emerald-900 mt-1 uppercase font-black tracking-widest">R2_CONCORDANCE: {analysis.rSquared > 0.95 ? 'HIGH' : 'UNSTABLE'}</div>
              </div>
           </div>
         </div>

@@ -9,7 +9,7 @@ import {
   Cpu, LayoutGrid, Info, ArrowLeftRight, ListFilter,
   Eye, EyeOff, Layers, Hash, Database, Globe, Link as LinkIcon,
   ChevronUp, ChevronDown, MoveVertical, FileDown,
-  SendHorizontal, X
+  SendHorizontal, X, FileImage, Shield
 } from 'lucide-react';
 import { LogEntry } from '../types';
 
@@ -33,6 +33,7 @@ const GhostSync: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
   const [isAutoAligning, setIsAutoAligning] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'OVERLAY' | 'DIFFERENTIAL'>('OVERLAY');
   const [correlationScore, setCorrelationScore] = useState(0);
@@ -59,7 +60,7 @@ const GhostSync: React.FC = () => {
     },
     { 
       id: 'SIG-002', 
-      name: 'GHOST_GR_TRACE', 
+      name: 'GHOST_LOG', 
       type: 'GR', 
       source: 'SONIC_VETO_2024', 
       samples: MOCK_GHOST_LOG.length, 
@@ -93,7 +94,8 @@ const GhostSync: React.FC = () => {
   const handleExportPNG = async () => {
     if (!chartContainerRef.current || isExporting) return;
     setIsExporting(true);
-    setValidationError("SNAPSHOT: CAPTURING FORENSIC TRACE...");
+    setIsShutterActive(true); // Visual shutter flash
+    setValidationError("SNAPSHOT: GENERATING FORENSIC ARTIFACT...");
 
     try {
       const container = chartContainerRef.current;
@@ -112,19 +114,44 @@ const GhostSync: React.FC = () => {
       const url = URL.createObjectURL(svgBlob);
 
       img.onload = () => {
-        canvas.width = img.width * 2; 
-        canvas.height = img.height * 2;
+        // High-DPI export
+        const scale = 2;
+        canvas.width = img.width * scale; 
+        canvas.height = img.height * scale;
         if (ctx) {
-          ctx.scale(2, 2);
+          ctx.scale(scale, scale);
           ctx.fillStyle = '#010409';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillRect(0, 0, img.width, img.height);
           ctx.drawImage(img, 0, 0);
+          
+          // Stylized Forensic Watermark
+          const watermarkY = img.height - 40;
+          const watermarkX = img.width - 20;
+
+          // Background blur box for watermark
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
+          ctx.fillRect(watermarkX - 250, watermarkY - 30, 240, 55);
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(watermarkX - 250, watermarkY - 30, 240, 55);
+
+          ctx.fillStyle = '#10b981';
           ctx.font = 'bold 12px "Fira Code", monospace';
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.4)';
           ctx.textAlign = 'right';
-          ctx.fillText('VERIFIED: BRAHAN FORENSICS', img.width - 20, img.height - 20);
-          ctx.fillText(`TIMESTAMP: ${new Date().toISOString()}`, img.width - 20, img.height - 35);
-          ctx.fillText(`CORRELATION: ${correlationScore.toFixed(1)}%`, img.width - 20, img.height - 50);
+          ctx.fillText('VERIFIED: BRAHAN FORENSICS', watermarkX - 10, watermarkY - 10);
+          
+          ctx.font = '8px "Fira Code", monospace';
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.6)';
+          ctx.fillText(`TRACE_ID: LOCK_0XF | OFFSET: ${offset.toFixed(3)}M`, watermarkX - 10, watermarkY + 5);
+          ctx.fillText(`TIMESTAMP: ${new Date().toISOString()}`, watermarkX - 10, watermarkY + 18);
+          
+          // Corner accents
+          ctx.beginPath();
+          ctx.moveTo(watermarkX - 250, watermarkY - 30);
+          ctx.lineTo(watermarkX - 230, watermarkY - 30);
+          ctx.moveTo(watermarkX - 250, watermarkY - 30);
+          ctx.lineTo(watermarkX - 250, watermarkY - 10);
+          ctx.stroke();
 
           const pngUrl = canvas.toDataURL('image/png');
           const downloadLink = document.createElement('a');
@@ -136,15 +163,15 @@ const GhostSync: React.FC = () => {
         }
         URL.revokeObjectURL(url);
         setIsExporting(false);
+        setTimeout(() => setIsShutterActive(false), 200);
         setValidationError("SNAPSHOT_COMPLETE: PNG_ARCHIVED");
-        setIsShutterActive(true);
-        setTimeout(() => setIsShutterActive(false), 300);
       };
       img.src = url;
     } catch (error) {
       console.error(error);
       setValidationError("SNAPSHOT_ERROR: FAILED_TO_RENDER_IMAGE");
       setIsExporting(false);
+      setIsShutterActive(false);
     }
   };
 
@@ -154,16 +181,19 @@ const GhostSync: React.FC = () => {
     setValidationError("FETCHING_REMOTE_TRACE: INITIATING UPLINK...");
     
     try {
+      if (remoteUrl.includes('example.com') || remoteUrl.includes('mock')) {
+         await new Promise(r => setTimeout(r, 1500));
+         throw new Error("MOCK_TRIGGER");
+      }
+
       const response = await fetch(remoteUrl);
       if (!response.ok) throw new Error("NETWORK_ACCESS_DENIED");
       
       const text = await response.text();
       let parsedData: LogEntry[] = [];
       
-      // Resilient CSV / LAS parsing
       if (remoteUrl.toLowerCase().endsWith('.csv') || text.includes(',')) {
-        // Fix: Use RegExp.test instead of String.includes which doesn't accept RegExp
-        const lines = text.split('\n').filter(l => l.trim() !== '' && !/[a-zA-Z]/.test(l)); // Skip headers
+        const lines = text.split('\n').filter(l => l.trim() !== '' && !/[a-zA-Z]/.test(l));
         lines.forEach(line => {
           const parts = line.split(',').map(p => parseFloat(p.trim()));
           if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -185,8 +215,7 @@ const GhostSync: React.FC = () => {
       }
 
       if (parsedData.length === 0) {
-        setValidationError("FETCH_WARN: NO COMPATIBLE DATA FOUND. INJECTING MOCK TRACE.");
-        parsedData = MOCK_GHOST_LOG.map(d => ({ ...d, gr: d.gr + (Math.random() - 0.5) * 12 }));
+        throw new Error("PARSE_FAILED");
       }
 
       const newId = `SIG-EXT-${Math.floor(Math.random() * 9999)}`;
@@ -208,8 +237,29 @@ const GhostSync: React.FC = () => {
       setRemoteUrl('');
       triggerShake();
 
-    } catch (error) {
-      setValidationError("FETCH_ERROR: RESOURCE UNREACHABLE (CORS_POLICY)");
+    } catch (error: any) {
+      if (error.message === "MOCK_TRIGGER" || error.message === "PARSE_FAILED" || error.message === "NETWORK_ACCESS_DENIED") {
+         setValidationError("FETCH_WARN: CORS_BLOCK OR PARSE_ERROR. INJECTING SYNTHETIC TRACE.");
+         const parsedData = MOCK_GHOST_LOG.map(d => ({ ...d, gr: d.gr + (Math.random() - 0.5) * 15 }));
+         const newId = `SIG-SYNTH-${Math.floor(Math.random() * 9999)}`;
+         const newSignal: SignalMetadata = {
+           id: newId,
+           name: `SYNTH_${remoteUrl.split('/').pop()?.substring(0, 8) || 'TRACE'}`,
+           type: 'GR',
+           source: 'SYNTHETIC_RECONSTRUCTION',
+           samples: parsedData.length,
+           depthRange: "1214 - 1412m",
+           color: '#fbbf24',
+           visible: true
+         };
+         setSignals(prev => [...prev, newSignal]);
+         setSignalDataMap(prev => ({ ...prev, [newId]: parsedData }));
+         setShowRemoteInput(false);
+         setRemoteUrl('');
+         triggerShake();
+      } else {
+         setValidationError("FETCH_ERROR: UNKNOWN SYSTEM FAULT.");
+      }
     } finally {
       setIsFetchingRemote(false);
     }
@@ -287,10 +337,14 @@ const GhostSync: React.FC = () => {
     setCorrelationScore(score);
   }, [combinedData]);
 
+  const isGhostActive = isDragging || isAutoAligning || offset !== 0;
+  const ghostLabel = isGhostActive ? 'OFFSET_LOG' : 'GHOST_LOG';
+
   return (
     <div className={`flex flex-col h-full space-y-3 p-4 bg-slate-900/40 border border-emerald-900/30 rounded-lg transition-all relative overflow-hidden ${isShaking ? 'animate-shake' : ''}`}>
       
-      {isShutterActive && <div className="absolute inset-0 bg-emerald-500/20 z-[100] animate-pulse"></div>}
+      {/* Shutter Flash Visual Feedback */}
+      {isShutterActive && <div className="absolute inset-0 bg-white/20 z-[100] animate-pulse pointer-events-none"></div>}
 
       {/* Header HUD */}
       <div className="flex items-center justify-between mb-2">
@@ -308,7 +362,7 @@ const GhostSync: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
-           <div className="bg-slate-950/90 border border-emerald-900/40 rounded p-1 flex space-x-1 shadow-xl">
+           <div className="bg-slate-950/90 border border-emerald-900/40 p-1 rounded-sm flex space-x-1 shadow-xl">
               <button onClick={() => setViewMode('OVERLAY')} className={`px-3 py-1.5 rounded text-[9px] font-black uppercase transition-all ${viewMode === 'OVERLAY' ? 'bg-emerald-500 text-slate-950' : 'text-emerald-800 hover:text-emerald-500'}`}>Overlay</button>
               <button onClick={() => setViewMode('DIFFERENTIAL')} className={`px-3 py-1.5 rounded text-[9px] font-black uppercase transition-all ${viewMode === 'DIFFERENTIAL' ? 'bg-orange-500 text-slate-950' : 'text-emerald-800 hover:text-orange-500'}`}>Diff</button>
            </div>
@@ -317,10 +371,10 @@ const GhostSync: React.FC = () => {
               <button 
                 onClick={handleExportPNG}
                 disabled={isExporting}
-                title="Export High-Res PNG"
+                title="Quick Snapshot"
                 className={`p-2 rounded text-emerald-500 hover:bg-emerald-500/10 transition-all ${isExporting ? 'animate-pulse opacity-50' : ''}`}
               >
-                <Camera size={16} />
+                {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
               </button>
               <button 
                 onClick={triggerAutoLineup} 
@@ -359,7 +413,9 @@ const GhostSync: React.FC = () => {
                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2 truncate">
                          <div className={`w-1.5 h-1.5 rounded-full ${isAutoAligning ? 'animate-pulse bg-orange-500' : correlationScore > 95 ? 'bg-emerald-500' : 'bg-emerald-950'}`}></div>
-                         <span className="text-[10px] font-black text-emerald-100 truncate">{sig.name}</span>
+                         <span className="text-[10px] font-black text-emerald-100 truncate">
+                           {sig.id === 'SIG-002' ? ghostLabel : sig.name}
+                         </span>
                       </div>
                       <button 
                         onClick={() => toggleSignalVisibility(sig.id)} 
@@ -388,7 +444,7 @@ const GhostSync: React.FC = () => {
                    <div className="flex flex-col space-y-2 bg-slate-900 border border-emerald-500/30 rounded-lg p-3">
                      <div className="flex items-center space-x-2 text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-1">
                         <LinkIcon size={12} />
-                        <span>Remote_Telemetry_URL</span>
+                        <span>Remote_Telemetry_URL (.LAS/.CSV)</span>
                      </div>
                      <input 
                        type="text" 
@@ -410,7 +466,6 @@ const GhostSync: React.FC = () => {
                           onClick={() => setShowRemoteInput(false)}
                           className="px-3 py-2.5 bg-slate-950 border border-emerald-900/50 text-emerald-800 rounded font-black text-[9px] uppercase tracking-widest hover:text-emerald-500 transition-all"
                         >
-                           {/* Fix: Added missing X icon import */}
                            <X size={12} />
                         </button>
                      </div>
@@ -460,6 +515,8 @@ const GhostSync: React.FC = () => {
                 <input 
                    type="range" min={-HARD_LIMIT} max={HARD_LIMIT} step="0.01" value={offset} 
                    onChange={(e) => setOffset(parseFloat(e.target.value))}
+                   onMouseDown={() => setIsDragging(true)}
+                   onMouseUp={() => setIsDragging(false)}
                    className="w-full h-2 bg-slate-900 appearance-none rounded-full accent-emerald-500 cursor-pointer border border-emerald-900/10 shadow-inner"
                 />
              </div>
@@ -487,7 +544,7 @@ const GhostSync: React.FC = () => {
                    <XAxis type="number" stroke="#064e3b" fontSize={9} axisLine={false} tick={false} domain={['auto', 'auto']} />
                    <YAxis type="number" dataKey="depth" reversed domain={['auto', 'auto']} stroke="#10b981" fontSize={8} axisLine={{stroke: '#064e3b'}} tickLine={{stroke: '#064e3b'}} tick={{fill: '#064e3b', fontWeight: 'bold'}} />
                    <Tooltip 
-                     contentStyle={{ backgroundColor: '#020617', border: '1px solid #064e3b', fontSize: '9px', fontFamily: 'Fira Code' }}
+                     contentStyle={{ backgroundColor: '#020617', border: '1px solid #064e3b', fontSize: '10px', fontFamily: 'Fira Code' }}
                      itemStyle={{ textTransform: 'uppercase' }}
                      cursor={{ stroke: '#10b981', strokeWidth: 1 }}
                    />
@@ -497,10 +554,19 @@ const GhostSync: React.FC = () => {
                    )}
 
                    {signals.find(s => s.id === 'SIG-001')?.visible && (
-                     <Line type="monotone" dataKey="baseGR" stroke="#10b981" dot={false} strokeWidth={2.5} isAnimationActive={false} />
+                     <Line type="monotone" dataKey="baseGR" name="BASE_LOG" stroke="#10b981" dot={false} strokeWidth={2.5} isAnimationActive={false} />
                    )}
                    {signals.find(s => s.id === 'SIG-002')?.visible && (
-                     <Line type="monotone" dataKey="ghostGR" stroke="#FF5F1F" dot={false} strokeWidth={2.5} strokeDasharray="5 3" isAnimationActive={false} />
+                     <Line 
+                       type="monotone" 
+                       dataKey="ghostGR" 
+                       name={ghostLabel} 
+                       stroke="#FF5F1F" 
+                       dot={false} 
+                       strokeWidth={2.5} 
+                       strokeDasharray="5 3" 
+                       isAnimationActive={false} 
+                     />
                    )}
                    {signals.map(sig => {
                      if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
@@ -509,6 +575,7 @@ const GhostSync: React.FC = () => {
                            key={sig.id} 
                            type="monotone" 
                            dataKey={sig.id} 
+                           name={sig.name}
                            stroke={sig.color} 
                            dot={false} 
                            strokeWidth={2} 
@@ -569,6 +636,24 @@ const GhostSync: React.FC = () => {
                 </ResponsiveContainer>
              </div>
           </div>
+
+          <button 
+            onClick={handleExportPNG}
+            disabled={isExporting}
+            className={`w-full py-4 border rounded font-black uppercase text-[10px] tracking-[0.2em] flex items-center justify-center space-x-3 transition-all group relative overflow-hidden ${isExporting ? 'bg-orange-500/10 border-orange-500/40 text-orange-500' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/20 shadow-lg'}`}
+          >
+            {isExporting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Generating...</span>
+              </>
+            ) : (
+              <>
+                <Shield size={16} className="group-hover:scale-110 transition-transform" />
+                <span>Export Forensic Trace</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 

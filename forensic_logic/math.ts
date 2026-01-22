@@ -21,24 +21,55 @@ export function calculateLinearRegression(data: number[]): { slope: number; inte
   return { slope, intercept, rSquared };
 }
 
-export function diagnoseSawtooth(rSquared: number): { status: string; color: string; diagnosis: string } {
+export function diagnoseSawtooth(rSquared: number, slope: number): { status: string; color: string; diagnosis: string } {
+  const absSlope = Math.abs(slope);
+  
+  // High confidence linear behavior (Consistent recharge/leak)
   if (rSquared > 0.98) {
+    if (absSlope > 15) {
+      return {
+        status: "🔴 CRITICAL: RAPID FLOW BREACH",
+        color: "#ef4444", 
+        diagnosis: `Extreme linear recharge at ${absSlope.toFixed(2)} PSI/unit. Direct high-pressure conduit confirmed. Immediate shutdown of parent well advised.`
+      };
+    } else if (absSlope > 5) {
+      return {
+        status: "🟠 WARNING: STEADY RECHARGE",
+        color: "#f97316", 
+        diagnosis: `Steady linear build-up (${absSlope.toFixed(2)} PSI/unit). High-flow micro-annulus or valve bypass. Monitor for escalation.`
+      };
+    } else {
+      return {
+        status: "🟡 CAUTION: PERSISTENT INGRESS",
+        color: "#fbbf24", 
+        diagnosis: `Slow but highly consistent linear ingress (${absSlope.toFixed(3)} PSI/unit). Likely gas migration from lower reservoir. Potential for gas-cap formation.`
+      };
+    }
+  } 
+  
+  // Moderate confidence (Unstable or transient effects)
+  else if (rSquared > 0.85) {
+    if (absSlope > 2) {
+      return {
+        status: "🔵 UNSTABLE: HYDRAULIC TRANSIENT",
+        color: "#3b82f6",
+        diagnosis: `Fluctuating pressure shift. Signature suggests thermal expansion or fluid cooling combined with minor seepage.`
+      };
+    } else {
+      return {
+        status: "🟢 STABLE: NORMAL OPERATIONS",
+        color: "#10b981",
+        diagnosis: "Minimal pressure delta. Residual fluctuations consistent with diurnal thermal cycling."
+      };
+    }
+  } 
+  
+  // Low confidence (Erratic/Non-linear)
+  else {
     return {
-      status: "🔴 SAWTOOTH: ACTIVE LEAK DETECTED",
-      color: "#ef4444", 
-      diagnosis: "Linear recharge detected. Pressure is driven by a constant source (Reservoir/Gas Lift). Critical mechanical breach likely."
-    };
-  } else if (rSquared > 0.85) {
-    return {
-      status: "🟡 WARNING: UNSTABLE GRADIENT",
-      color: "#f97316",
-      diagnosis: "Non-linear build-up. Potential thermal expansion or heavy fluid migration. Monitor for stabilization."
-    };
-  } else {
-    return {
-      status: "🟢 STABLE: THERMAL/STATIC",
+      status: "🟢 SYSTEM_IDLE: STATIC ANNULUS",
       color: "#10b981",
-      diagnosis: "Pressure behavior is erratic or asymptotic. Likely benign thermal effect or static gas pocket compression."
+      diagnosis: "Non-linear pressure behavior detected. Typical of closed-system thermal normalization or localized fluid compression."
     };
   }
 }

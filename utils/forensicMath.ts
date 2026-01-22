@@ -1,4 +1,3 @@
-
 export function calculateLinearRegression(data: number[]): { slope: number; intercept: number; rSquared: number } {
   const n = data.length;
   const x = Array.from({ length: n }, (_, i) => i);
@@ -21,24 +20,40 @@ export function calculateLinearRegression(data: number[]): { slope: number; inte
   return { slope, intercept, rSquared };
 }
 
-export function diagnoseSawtooth(rSquared: number): { status: string; color: string; diagnosis: string } {
-  if (rSquared > 0.98) {
+export function diagnoseSawtooth(rSquared: number, slope: number): { status: string; color: string; diagnosis: string } {
+  const absSlope = Math.abs(slope);
+  
+  if (rSquared > 0.97) {
+    if (absSlope > 10) {
+      return {
+        status: "🔴 CRITICAL: RAPID SUSTAINED BREACH",
+        color: "#ef4444", 
+        diagnosis: `Linear recharge at ${absSlope.toFixed(2)} PSI/unit. High-flow conduit detected. Immediate intervention required.`
+      };
+    } else if (absSlope > 1.5) {
+       return {
+        status: "🟠 WARNING: PERSISTENT MICRO-LEAK",
+        color: "#f97316", 
+        diagnosis: `Linear build-up at ${absSlope.toFixed(2)} PSI/unit. Evidence of micro-annulus or seal degradation.`
+      };
+    } else {
+      return {
+        status: "🟡 CAUTION: LOW-RATE INGRESS",
+        color: "#fbbf24", 
+        diagnosis: "Highly linear but extremely slow build-up. Possible gas migration or slight hydraulic imbalance."
+      };
+    }
+  } else if (rSquared > 0.80) {
     return {
-      status: "🔴 SAWTOOTH: ACTIVE LEAK DETECTED",
-      color: "#ef4444", // red-500
-      diagnosis: "Linear recharge detected. Pressure is driven by a constant source (Reservoir/Gas Lift). Critical mechanical breach likely."
-    };
-  } else if (rSquared > 0.85) {
-    return {
-      status: "🟡 WARNING: UNSTABLE GRADIENT",
-      color: "#f97316", // orange-500
-      diagnosis: "Non-linear build-up. Potential thermal expansion or heavy fluid migration. Monitor for stabilization."
+      status: "🔵 UNSTABLE: HYDRAULIC TRANSIENT",
+      color: "#3b82f6",
+      diagnosis: "Non-linear pressure shift. Potential thermal expansion or fluid cooling. Not currently indicative of a mechanical breach."
     };
   } else {
     return {
-      status: "🟢 STABLE: THERMAL/STATIC",
-      color: "#10b981", // emerald-500
-      diagnosis: "Pressure behavior is erratic or asymptotic. Likely benign thermal effect or static gas pocket compression."
+      status: "🟢 STABLE: NORMAL OPERATIONS",
+      color: "#10b981",
+      diagnosis: "Erratic or static pressure signature. Typical behavior for a closed-system annulus."
     };
   }
 }
