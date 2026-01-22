@@ -15,7 +15,7 @@
     "react-dom": "^19.2.3",
     "lucide-react": "^0.562.0",
     "plotly.js-dist-min": "^2.35.2",
-    "jspdf": "^2.5.1"
+    "jspdf": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
