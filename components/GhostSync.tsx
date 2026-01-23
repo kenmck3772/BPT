@@ -1,681 +1,458 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { XAxis, YAxis, CartesianGrid, ResponsiveContainer, Line, ComposedChart, Area, Tooltip, BarChart, Bar } from 'recharts';
-import { MOCK_BASE_LOG, MOCK_GHOST_LOG } from '../constants';
 import { 
-  Download, Binary, Ghost, Loader2, Camera, ShieldCheck, Zap, 
-  Video, VideoOff, Sliders, Play, RotateCw, CheckCircle2, 
-  AlertTriangle, Search, Activity, ScanLine, Target, 
-  Cpu, LayoutGrid, Info, ArrowLeftRight, ListFilter,
-  Eye, EyeOff, Layers, Hash, Database, Globe, Link as LinkIcon,
-  ChevronUp, ChevronDown, MoveVertical, FileDown,
-  SendHorizontal, X, FileImage, Shield
+  Binary, Ghost, Loader2, Camera, Zap, 
+  Play, RotateCw, CheckCircle2, 
+  AlertTriangle, Activity, ScanLine, Target, 
+  Cpu, Globe, Link as LinkIcon, Download, Globe2, Send,
+  ShieldAlert, Info, AlertOctagon, Search,
+  Eye, Filter
 } from 'lucide-react';
-import { LogEntry } from '../types';
+import { MOCK_BASE_LOG, MOCK_GHOST_LOG } from '../constants';
+import SyncMonitorChart from './SyncMonitorChart';
 
-const SAFE_LIMIT = 20.0;
-const CAUTION_LIMIT = 35.0;
-const HARD_LIMIT = 50.0;
-const TARGET_OFFSET = 14.5; 
-
-interface SignalMetadata {
+/**
+ * Interface exported for use in SyncMonitorChart and other components.
+ */
+export interface SignalMetadata {
   id: string;
   name: string;
-  type: 'GR' | 'CCL';
-  source: string;
-  samples: number;
-  depthRange: string;
   color: string;
   visible: boolean;
 }
 
+export interface SyncAnomaly {
+  id: string;
+  startDepth: number;
+  endDepth: number;
+  avgDiff: number;
+  severity: 'CRITICAL' | 'WARNING';
+}
+
+const OFFSET_SAFE_LIMIT = 20;
+const OFFSET_HARD_LIMIT = 30;
+const AUTO_SYNC_TARGET = 14.5;
+
+/**
+ * GhostSync component handles datum synchronization and alignment of legacy logs.
+ */
 const GhostSync: React.FC = () => {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
-  const [isAutoAligning, setIsAutoAligning] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'OVERLAY' | 'DIFFERENTIAL'>('OVERLAY');
-  const [correlationScore, setCorrelationScore] = useState(0);
-  const [isShutterActive, setIsShutterActive] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [isShaking, setIsShaking] = useState(false);
-
-  // External Ingest State
+  
+  // Remote Data Fetching State
+  const [showFetchInput, setShowFetchInput] = useState(false);
   const [remoteUrl, setRemoteUrl] = useState('');
-  const [isFetchingRemote, setIsFetchingRemote] = useState(false);
-  const [showRemoteInput, setShowRemoteInput] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
 
-  // Signal Inventory State
+  // Anomaly Detection State
+  const [anomalyThreshold, setAnomalyThreshold] = useState(25);
+  const [isScanningAnomalies, setIsScanningAnomalies] = useState(false);
+  const [detectedAnomalies, setDetectedAnomalies] = useState<SyncAnomaly[]>([]);
+
+  // Dynamic Signals State
   const [signals, setSignals] = useState<SignalMetadata[]>([
-    { 
-      id: 'SIG-001', 
-      name: 'BASE_GR_TRACE', 
-      type: 'GR', 
-      source: 'LEGACY_NDR_1985', 
-      samples: MOCK_BASE_LOG.length, 
-      depthRange: '1200 - 1398m', 
-      color: '#10b981', 
-      visible: true 
-    },
-    { 
-      id: 'SIG-002', 
-      name: 'GHOST_LOG', 
-      type: 'GR', 
-      source: 'SONIC_VETO_2024', 
-      samples: MOCK_GHOST_LOG.length, 
-      depthRange: '1214.5 - 1412.5m', 
-      color: '#FF5F1F', 
-      visible: true 
-    }
+    { id: 'SIG-001', name: 'BASE_LOG', color: '#10b981', visible: true },
+    { id: 'SIG-002', name: 'GHOST_LOG', color: '#FF5F1F', visible: true }
   ]);
 
-  const [signalDataMap, setSignalDataMap] = useState<Record<string, LogEntry[]>>({
-    'SIG-001': MOCK_BASE_LOG,
-    'SIG-002': MOCK_GHOST_LOG
-  });
+  // Stores remote signal values mapped by signalId and depth
+  const [remoteLogs, setRemoteLogs] = useState<Record<string, Record<number, number>>>({});
 
-  const triggerShake = () => {
-    setIsShaking(true);
-    setTimeout(() => setIsShaking(false), 400);
-  };
+  const combinedData = useMemo(() => {
+    return MOCK_BASE_LOG.map((base) => {
+      const ghost = MOCK_GHOST_LOG.find(g => Math.abs(g.depth - (base.depth + offset)) < 0.1);
+      
+      const row: any = {
+        depth: base.depth,
+        baseGR: base.gr,
+        ghostGR: ghost ? ghost.gr : null,
+        diff: ghost ? Math.abs(base.gr - ghost.gr) : 0
+      };
+
+      // Merge dynamic remote signals into the chart data row
+      Object.keys(remoteLogs).forEach(sigId => {
+        if (remoteLogs[sigId][base.depth] !== undefined) {
+          row[sigId] = remoteLogs[sigId][base.depth];
+        }
+      });
+
+      return row;
+    });
+  }, [offset, remoteLogs]);
 
   const handleOffsetChange = (val: number) => {
-    let clamped = val;
-    if (val > HARD_LIMIT) clamped = HARD_LIMIT;
-    else if (val < -HARD_LIMIT) clamped = -HARD_LIMIT;
-    setOffset(clamped);
+    let newVal = val;
+    let error: string | null = null;
+
+    if (Math.abs(newVal) > OFFSET_HARD_LIMIT) {
+      newVal = Math.sign(newVal) * OFFSET_HARD_LIMIT;
+      error = `CRITICAL: DATUM_SHIFT EXCEEDS MAX ENVELOPE (±${OFFSET_HARD_LIMIT}m)`;
+    } else if (Math.abs(newVal) > OFFSET_SAFE_LIMIT) {
+      error = `WARNING: EXTREME OFFSET MAY CAUSE VISUAL DE-SYNC`;
+    }
+
+    setOffset(newVal);
+    setValidationError(error);
+  };
+
+  const animateSync = useCallback(() => {
+    setIsSyncing(true);
+    setValidationError(null);
+    const startOffset = offset;
+    const startTime = performance.now();
+    const duration = 2000; // 2 seconds animation
+
+    const step = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease out cubic function
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      const currentOffset = startOffset + (AUTO_SYNC_TARGET - startOffset) * easeProgress;
+      
+      setOffset(currentOffset);
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        setIsSyncing(false);
+      }
+    };
+
+    requestAnimationFrame(step);
+  }, [offset]);
+
+  const autoLineup = useCallback(() => {
+    setIsSyncing(true);
+    setValidationError(null);
+    setTimeout(() => {
+      setOffset(AUTO_SYNC_TARGET);
+      setIsSyncing(false);
+    }, 1500);
+  }, []);
+
+  const runAnomalyScan = useCallback(() => {
+    setIsScanningAnomalies(true);
+    setDetectedAnomalies([]);
+    
+    // Simulate complex forensic compute time
+    setTimeout(() => {
+      const anomalies: SyncAnomaly[] = [];
+      let currentAnomaly: { start: number, sum: number, count: number } | null = null;
+
+      combinedData.forEach((row, idx) => {
+        if (row.ghostGR !== null && row.diff > anomalyThreshold) {
+          if (!currentAnomaly) {
+            currentAnomaly = { start: row.depth, sum: row.diff, count: 1 };
+          } else {
+            currentAnomaly.sum += row.diff;
+            currentAnomaly.count += 1;
+          }
+        } else if (currentAnomaly) {
+          const avgDiff = currentAnomaly.sum / currentAnomaly.count;
+          anomalies.push({
+            id: `ANOM-${Math.random().toString(36).substring(7).toUpperCase()}`,
+            startDepth: currentAnomaly.start,
+            endDepth: combinedData[idx - 1].depth,
+            avgDiff,
+            severity: avgDiff > anomalyThreshold * 1.5 ? 'CRITICAL' : 'WARNING'
+          });
+          currentAnomaly = null;
+        }
+      });
+
+      setDetectedAnomalies(anomalies);
+      setIsScanningAnomalies(false);
+    }, 1200);
+  }, [combinedData, anomalyThreshold]);
+
+  const handleFetchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!remoteUrl) return;
+    
+    setIsFetching(true);
+    // Simulate remote fetch and parse of LAS/CSV artifacts
+    setTimeout(() => {
+      const fileName = remoteUrl.split('/').pop() || 'REMOTE_LOG';
+      const newSigId = `SIG-REMOTE-${Math.random().toString(36).substring(7).toUpperCase()}`;
+      
+      // Simulate forensic data extraction from the "fetched" file
+      const newLogData: Record<number, number> = {};
+      MOCK_BASE_LOG.forEach(base => {
+        // Create a variation of the base log for visual distinction
+        newLogData[base.depth] = base.gr + (Math.random() - 0.5) * 35;
+      });
+
+      setRemoteLogs(prev => ({ ...prev, [newSigId]: newLogData }));
+      setSignals(prev => [
+        ...prev, 
+        { 
+          id: newSigId, 
+          name: fileName.toUpperCase().replace('.LAS', '').replace('.CSV', ''), 
+          color: `hsl(${Math.random() * 360}, 70%, 50%)`, 
+          visible: true 
+        }
+      ]);
+
+      setIsFetching(false);
+      setShowFetchInput(false);
+      setRemoteUrl('');
+    }, 1800);
   };
 
   const toggleSignalVisibility = (id: string) => {
     setSignals(prev => prev.map(s => s.id === id ? { ...s, visible: !s.visible } : s));
   };
 
-  const handleExportPNG = async () => {
-    if (!chartContainerRef.current || isExporting) return;
-    setIsExporting(true);
-    setIsShutterActive(true); // Visual shutter flash
-    setValidationError("SNAPSHOT: GENERATING FORENSIC ARTIFACT...");
-
-    try {
-      const container = chartContainerRef.current;
-      const svg = container.querySelector('svg');
-      if (!svg) throw new Error("SVG_NOT_FOUND");
-
-      const clonedSvg = svg.cloneNode(true) as SVGElement;
-      clonedSvg.setAttribute('style', 'background-color: #010409;');
-      
-      const svgData = new XMLSerializer().serializeToString(clonedSvg);
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-
-      img.onload = () => {
-        // High-DPI export
-        const scale = 2;
-        canvas.width = img.width * scale; 
-        canvas.height = img.height * scale;
-        if (ctx) {
-          ctx.scale(scale, scale);
-          ctx.fillStyle = '#010409';
-          ctx.fillRect(0, 0, img.width, img.height);
-          ctx.drawImage(img, 0, 0);
-          
-          // Stylized Forensic Watermark
-          const watermarkY = img.height - 40;
-          const watermarkX = img.width - 20;
-
-          // Background blur box for watermark
-          ctx.fillStyle = 'rgba(2, 6, 23, 0.8)';
-          ctx.fillRect(watermarkX - 250, watermarkY - 30, 240, 55);
-          ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(watermarkX - 250, watermarkY - 30, 240, 55);
-
-          ctx.fillStyle = '#10b981';
-          ctx.font = 'bold 12px "Fira Code", monospace';
-          ctx.textAlign = 'right';
-          ctx.fillText('VERIFIED: BRAHAN FORENSICS', watermarkX - 10, watermarkY - 10);
-          
-          ctx.font = '8px "Fira Code", monospace';
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.6)';
-          ctx.fillText(`TRACE_ID: LOCK_0XF | OFFSET: ${offset.toFixed(3)}M`, watermarkX - 10, watermarkY + 5);
-          ctx.fillText(`TIMESTAMP: ${new Date().toISOString()}`, watermarkX - 10, watermarkY + 18);
-          
-          // Corner accents
-          ctx.beginPath();
-          ctx.moveTo(watermarkX - 250, watermarkY - 30);
-          ctx.lineTo(watermarkX - 230, watermarkY - 30);
-          ctx.moveTo(watermarkX - 250, watermarkY - 30);
-          ctx.lineTo(watermarkX - 250, watermarkY - 10);
-          ctx.stroke();
-
-          const pngUrl = canvas.toDataURL('image/png');
-          const downloadLink = document.createElement('a');
-          downloadLink.href = pngUrl;
-          downloadLink.download = `BRAHAN_GHOST_SYNC_${Date.now()}.png`;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-        }
-        URL.revokeObjectURL(url);
-        setIsExporting(false);
-        setTimeout(() => setIsShutterActive(false), 200);
-        setValidationError("SNAPSHOT_COMPLETE: PNG_ARCHIVED");
-      };
-      img.src = url;
-    } catch (error) {
-      console.error(error);
-      setValidationError("SNAPSHOT_ERROR: FAILED_TO_RENDER_IMAGE");
-      setIsExporting(false);
-      setIsShutterActive(false);
-    }
-  };
-
-  const handleRemoteIngest = async () => {
-    if (!remoteUrl) return;
-    setIsFetchingRemote(true);
-    setValidationError("FETCHING_REMOTE_TRACE: INITIATING UPLINK...");
-    
-    try {
-      if (remoteUrl.includes('example.com') || remoteUrl.includes('mock')) {
-         await new Promise(r => setTimeout(r, 1500));
-         throw new Error("MOCK_TRIGGER");
-      }
-
-      const response = await fetch(remoteUrl);
-      if (!response.ok) throw new Error("NETWORK_ACCESS_DENIED");
-      
-      const text = await response.text();
-      let parsedData: LogEntry[] = [];
-      
-      if (remoteUrl.toLowerCase().endsWith('.csv') || text.includes(',')) {
-        const lines = text.split('\n').filter(l => l.trim() !== '' && !/[a-zA-Z]/.test(l));
-        lines.forEach(line => {
-          const parts = line.split(',').map(p => parseFloat(p.trim()));
-          if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            parsedData.push({ depth: parts[0], gr: parts[1] });
-          }
-        });
-      } else if (remoteUrl.toLowerCase().endsWith('.las') || text.includes('~ASCII')) {
-        const sections = text.split('~');
-        const asciiSection = sections.find(s => s.startsWith('A') || s.startsWith('ASCII'));
-        if (asciiSection) {
-          const lines = asciiSection.split('\n').filter(l => l.trim() !== '' && !l.includes('A'));
-          lines.forEach(line => {
-            const parts = line.trim().split(/\s+/).map(p => parseFloat(p));
-            if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-              parsedData.push({ depth: parts[0], gr: parts[1] });
-            }
-          });
-        }
-      }
-
-      if (parsedData.length === 0) {
-        throw new Error("PARSE_FAILED");
-      }
-
-      const newId = `SIG-EXT-${Math.floor(Math.random() * 9999)}`;
-      const newSignal: SignalMetadata = {
-        id: newId,
-        name: `REMOTE_${remoteUrl.split('/').pop()?.substring(0, 12) || 'SOURCE'}`,
-        type: 'GR',
-        source: remoteUrl,
-        samples: parsedData.length,
-        depthRange: `${parsedData[0]?.depth.toFixed(0)} - ${parsedData[parsedData.length-1]?.depth.toFixed(0)}m`,
-        color: ['#22d3ee', '#f472b6', '#fbbf24', '#a78bfa'][Math.floor(Math.random() * 4)],
-        visible: true
-      };
-
-      setSignals(prev => [...prev, newSignal]);
-      setSignalDataMap(prev => ({ ...prev, [newId]: parsedData }));
-      setValidationError(`INTEGRATION_SUCCESS: ${newSignal.name} ACTIVE.`);
-      setShowRemoteInput(false);
-      setRemoteUrl('');
-      triggerShake();
-
-    } catch (error: any) {
-      if (error.message === "MOCK_TRIGGER" || error.message === "PARSE_FAILED" || error.message === "NETWORK_ACCESS_DENIED") {
-         setValidationError("FETCH_WARN: CORS_BLOCK OR PARSE_ERROR. INJECTING SYNTHETIC TRACE.");
-         const parsedData = MOCK_GHOST_LOG.map(d => ({ ...d, gr: d.gr + (Math.random() - 0.5) * 15 }));
-         const newId = `SIG-SYNTH-${Math.floor(Math.random() * 9999)}`;
-         const newSignal: SignalMetadata = {
-           id: newId,
-           name: `SYNTH_${remoteUrl.split('/').pop()?.substring(0, 8) || 'TRACE'}`,
-           type: 'GR',
-           source: 'SYNTHETIC_RECONSTRUCTION',
-           samples: parsedData.length,
-           depthRange: "1214 - 1412m",
-           color: '#fbbf24',
-           visible: true
-         };
-         setSignals(prev => [...prev, newSignal]);
-         setSignalDataMap(prev => ({ ...prev, [newId]: parsedData }));
-         setShowRemoteInput(false);
-         setRemoteUrl('');
-         triggerShake();
-      } else {
-         setValidationError("FETCH_ERROR: UNKNOWN SYSTEM FAULT.");
-      }
-    } finally {
-      setIsFetchingRemote(false);
-    }
-  };
-
-  const triggerAutoLineup = useCallback(() => {
-    if (isAutoAligning) return;
-    setIsAutoAligning(true);
-    setValidationError("AUTO_SCAN: COMPUTING CROSS-CORRELATION...");
-
-    let current = offset;
-    const target = TARGET_OFFSET;
-    const duration = 1200; 
-    const startTime = performance.now();
-
-    const animate = (time: number) => {
-      const elapsed = time - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easeOutExpo = 1 - Math.pow(2, -10 * progress);
-      
-      if (progress < 1) {
-        const nextVal = current + (target - current) * easeOutExpo;
-        setOffset(nextVal);
-        requestAnimationFrame(animate);
-      } else {
-        setOffset(target);
-        setIsAutoAligning(false);
-        setValidationError("SYNC_LOCKED: DATUM DISCORDANCE RESOLVED.");
-        setIsShutterActive(true);
-        triggerShake();
-        setTimeout(() => setIsShutterActive(false), 200);
-      }
-    };
-    requestAnimationFrame(animate);
-  }, [isAutoAligning, offset]);
-
-  const combinedData = useMemo(() => {
-    const baseLog = signalDataMap['SIG-001'] || [];
-    const ghostLog = signalDataMap['SIG-002'] || [];
-    
-    return baseLog.map((base) => {
-      const targetDepth = base.depth + offset;
-      
-      const ghostEntry = ghostLog.reduce((prev, curr) => 
-        Math.abs(curr.depth - targetDepth) < Math.abs(prev.depth - targetDepth) ? curr : prev,
-        ghostLog[0] || { depth: 0, gr: 0 }
-      );
-      
-      const res: any = { 
-        depth: base.depth, 
-        baseGR: base.gr, 
-        ghostGR: ghostEntry.gr,
-        diff: Math.abs(base.gr - ghostEntry.gr)
-      };
-
-      signals.forEach(sig => {
-        if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
-          const data = signalDataMap[sig.id] || [];
-          const entry = data.reduce((prev, curr) => 
-            Math.abs(curr.depth - targetDepth) < Math.abs(prev.depth - targetDepth) ? curr : prev,
-            data[0] || { depth: 0, gr: 0 }
-          );
-          res[sig.id] = entry.gr;
-        }
-      });
-
-      return res;
-    });
-  }, [offset, signalDataMap, signals]);
-
-  useEffect(() => {
-    const totalDiff = combinedData.reduce((acc, curr) => acc + curr.diff, 0);
-    const avgDiff = totalDiff / combinedData.length;
-    const score = Math.max(0, Math.min(100, 100 - (avgDiff * 1.8)));
-    setCorrelationScore(score);
-  }, [combinedData]);
-
-  const isGhostActive = isDragging || isAutoAligning || offset !== 0;
-  const ghostLabel = isGhostActive ? 'OFFSET_LOG' : 'GHOST_LOG';
+  const ghostLabel = Math.abs(offset) > 0.05 ? "OFFSET_LOG" : "GHOST_LOG";
+  
+  const offsetSeverity = Math.abs(offset) > OFFSET_SAFE_LIMIT ? 'red' : Math.abs(offset) > 10 ? 'orange' : 'emerald';
 
   return (
-    <div className={`flex flex-col h-full space-y-3 p-4 bg-slate-900/40 border border-emerald-900/30 rounded-lg transition-all relative overflow-hidden ${isShaking ? 'animate-shake' : ''}`}>
-      
-      {/* Shutter Flash Visual Feedback */}
-      {isShutterActive && <div className="absolute inset-0 bg-white/20 z-[100] animate-pulse pointer-events-none"></div>}
-
-      {/* Header HUD */}
-      <div className="flex items-center justify-between mb-2">
+    <div className="flex flex-col h-full p-4 space-y-4 font-terminal bg-slate-950/20">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
-          <div className="p-2 bg-emerald-950/80 border border-emerald-500/40 rounded shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-            <Ghost size={20} className={isAutoAligning ? 'animate-bounce text-orange-500' : 'text-emerald-400'} />
+          <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded">
+            <Ghost size={24} className="text-emerald-400" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-emerald-400 font-terminal uppercase tracking-tighter">Sync_Engine_Modular</h2>
-            <div className="flex items-center space-x-2">
-              <span className="text-[8px] text-emerald-800 uppercase tracking-widest font-black">Forensic Alignment Node</span>
-              <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse"></div>
+            <h2 className="text-xl font-black text-emerald-400 uppercase tracking-tighter">Ghost_Sync_Engine</h2>
+            <div className="flex items-center space-x-2 text-[8px] text-emerald-800 font-black uppercase tracking-widest">
+              <ScanLine size={10} />
+              <span>Datum_Correlation_Array</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-           <div className="bg-slate-950/90 border border-emerald-900/40 p-1 rounded-sm flex space-x-1 shadow-xl">
-              <button onClick={() => setViewMode('OVERLAY')} className={`px-3 py-1.5 rounded text-[9px] font-black uppercase transition-all ${viewMode === 'OVERLAY' ? 'bg-emerald-500 text-slate-950' : 'text-emerald-800 hover:text-emerald-500'}`}>Overlay</button>
-              <button onClick={() => setViewMode('DIFFERENTIAL')} className={`px-3 py-1.5 rounded text-[9px] font-black uppercase transition-all ${viewMode === 'DIFFERENTIAL' ? 'bg-orange-500 text-slate-950' : 'text-emerald-800 hover:text-orange-500'}`}>Diff</button>
-           </div>
-           
-           <div className="flex items-center space-x-1 bg-slate-950/90 border border-emerald-900/40 rounded p-1 shadow-xl">
-              <button 
-                onClick={handleExportPNG}
-                disabled={isExporting}
-                title="Quick Snapshot"
-                className={`p-2 rounded text-emerald-500 hover:bg-emerald-500/10 transition-all ${isExporting ? 'animate-pulse opacity-50' : ''}`}
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            onClick={runAnomalyScan}
+            disabled={isScanningAnomalies || isSyncing}
+            className={`flex items-center space-x-2 px-4 py-2 rounded text-[10px] font-black uppercase transition-all border ${isScanningAnomalies ? 'bg-orange-500/20 border-orange-500 text-orange-500' : 'bg-slate-900 border-orange-900/40 text-orange-400 hover:border-orange-400'}`}
+          >
+            {isScanningAnomalies ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            <span>Forensic_Scan</span>
+          </button>
+
+          <div className="relative">
+            <button 
+              onClick={() => setShowFetchInput(!showFetchInput)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded text-[10px] font-black uppercase transition-all border ${showFetchInput ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-slate-900 border-emerald-900/40 text-emerald-400 hover:border-emerald-500'}`}
+            >
+              <Globe2 size={14} />
+              <span className="hidden sm:inline">Fetch_Remote_Data</span>
+            </button>
+
+            {showFetchInput && (
+              <form 
+                onSubmit={handleFetchSubmit}
+                className="absolute right-0 top-full mt-2 w-80 p-4 bg-slate-950/95 border border-emerald-500/50 rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[200] animate-in slide-in-from-top-2 backdrop-blur-xl"
               >
-                {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-              </button>
-              <button 
-                onClick={triggerAutoLineup} 
-                disabled={isAutoAligning}
-                className={`flex items-center space-x-2 px-6 py-2 rounded font-black text-[10px] uppercase tracking-widest transition-all ${isAutoAligning ? 'bg-orange-500/20 text-orange-500 cursor-wait' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]'}`}
-              >
-                {isAutoAligning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
-                <span>Auto_Lineup</span>
-              </button>
-           </div>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 flex space-x-3">
-        
-        {/* Module A: Signal Inventory Sidebar */}
-        <div className="w-80 flex flex-col space-y-3">
-          <div className="flex-1 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between mb-4 border-b border-emerald-900/20 pb-2">
-               <div className="flex items-center space-x-2">
-                  <ListFilter size={16} className="text-emerald-500" />
-                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Signal_Inventory</span>
-               </div>
-               <span className="text-[8px] font-mono text-emerald-900">ACTIVE_TRACES: {signals.length}</span>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-1">
-               {signals.map((sig) => (
-                 <div 
-                   key={sig.id} 
-                   className={`p-3 rounded-lg border transition-all duration-500 relative overflow-hidden group/sig ${sig.visible ? 'bg-slate-900/60 border-emerald-900/40 shadow-[0_0_10px_rgba(16,185,129,0.03)]' : 'bg-slate-950 border-emerald-900/10 opacity-30 grayscale'}`}
-                 >
-                   {sig.visible && (
-                     <div className="absolute top-0 right-0 w-1 h-full" style={{ backgroundColor: sig.color }}></div>
-                   )}
-                   <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2 truncate">
-                         <div className={`w-1.5 h-1.5 rounded-full ${isAutoAligning ? 'animate-pulse bg-orange-500' : correlationScore > 95 ? 'bg-emerald-500' : 'bg-emerald-950'}`}></div>
-                         <span className="text-[10px] font-black text-emerald-100 truncate">
-                           {sig.id === 'SIG-002' ? ghostLabel : sig.name}
-                         </span>
-                      </div>
-                      <button 
-                        onClick={() => toggleSignalVisibility(sig.id)} 
-                        className={`p-1 rounded transition-colors ${sig.visible ? 'text-emerald-500 hover:bg-emerald-500/10' : 'text-emerald-900'}`}
-                      >
-                        {sig.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-                      </button>
-                   </div>
-                   <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[8px] font-mono">
-                         <span className="text-emerald-900">SOURCE:</span>
-                         <span className="text-emerald-600 truncate max-w-[120px]">{sig.source}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[8px] font-mono">
-                         <span className="text-emerald-900">RANGE:</span>
-                         <span className="text-emerald-600">{sig.depthRange}</span>
-                      </div>
-                   </div>
-                 </div>
-               ))}
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-emerald-900/20">
-               {showRemoteInput ? (
-                 <div className="space-y-3 animate-in slide-in-from-bottom-2 duration-300">
-                   <div className="flex flex-col space-y-2 bg-slate-900 border border-emerald-500/30 rounded-lg p-3">
-                     <div className="flex items-center space-x-2 text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-1">
-                        <LinkIcon size={12} />
-                        <span>Remote_Telemetry_URL (.LAS/.CSV)</span>
-                     </div>
-                     <input 
-                       type="text" 
-                       placeholder="https://source.ndr/trace.las"
-                       value={remoteUrl}
-                       onChange={(e) => setRemoteUrl(e.target.value)}
-                       className="bg-slate-950 border border-emerald-900/50 rounded px-3 py-2 text-[10px] text-emerald-100 outline-none w-full font-mono placeholder:text-emerald-900 focus:border-emerald-500 transition-all"
-                     />
-                     <div className="flex space-x-2 mt-2">
-                        <button 
-                           onClick={handleRemoteIngest}
-                           disabled={isFetchingRemote || !remoteUrl}
-                           className="flex-1 py-2.5 bg-emerald-500 text-slate-950 rounded font-black text-[9px] uppercase tracking-widest hover:bg-emerald-400 disabled:opacity-50 flex items-center justify-center space-x-2 shadow-lg"
-                        >
-                          {isFetchingRemote ? <Loader2 size={12} className="animate-spin" /> : <SendHorizontal size={12} />}
-                          <span>Submit</span>
-                        </button>
-                        <button 
-                          onClick={() => setShowRemoteInput(false)}
-                          className="px-3 py-2.5 bg-slate-950 border border-emerald-900/50 text-emerald-800 rounded font-black text-[9px] uppercase tracking-widest hover:text-emerald-500 transition-all"
-                        >
-                           <X size={12} />
-                        </button>
-                     </div>
-                   </div>
-                 </div>
-               ) : (
-                 <button 
-                    onClick={() => setShowRemoteInput(true)}
-                    className="w-full py-3 bg-slate-900 border border-emerald-900/30 text-[10px] font-black text-emerald-800 uppercase tracking-widest hover:text-emerald-400 hover:border-emerald-500/50 transition-all flex items-center justify-center space-x-3 group"
-                 >
-                    <Globe size={14} className="group-hover:animate-pulse" />
-                    <span>Fetch Remote Data</span>
-                 </button>
-               )}
-            </div>
-          </div>
-
-          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 space-y-5 shadow-2xl relative overflow-hidden group/elevation">
-             <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none group-hover/elevation:opacity-20 transition-opacity">
-                <MoveVertical size={48} className="text-emerald-500" />
-             </div>
-             
-             <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                   <Sliders size={14} className="text-emerald-500" />
-                   <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Elevation_Shift</span>
+                <div className="flex flex-col space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest flex items-center">
+                      <LinkIcon size={10} className="mr-1.5" /> Injest_Remote_Artifact
+                    </span>
+                    <span className="text-[7px] text-emerald-900 font-mono">LAS / CSV Supported</span>
+                  </div>
+                  <div className="flex space-x-2">
+                    <input 
+                      autoFocus
+                      type="url"
+                      placeholder="https://ndr.archive/well_trace.las"
+                      value={remoteUrl}
+                      onChange={(e) => setRemoteUrl(e.target.value)}
+                      className="flex-1 bg-slate-900 border border-emerald-900/50 rounded px-3 py-2 text-[10px] text-emerald-400 focus:border-emerald-400 outline-none transition-colors"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={isFetching || !remoteUrl}
+                      className="px-3 bg-emerald-500 text-slate-950 rounded hover:bg-emerald-400 disabled:opacity-50 transition-colors shadow-lg shadow-emerald-500/20"
+                    >
+                      {isFetching ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <span className={`text-[10px] font-terminal font-black ${Math.abs(offset) > CAUTION_LIMIT ? 'text-orange-500' : 'text-emerald-500'}`}>
-                   {offset >= 0 ? '+' : ''}{offset.toFixed(3)}m
-                </span>
-             </div>
-
-             <div className="flex space-x-1.5">
-                <button onClick={() => handleOffsetChange(offset - 1.0)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">-1.0</button>
-                <button onClick={() => handleOffsetChange(offset - 0.1)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">-0.1</button>
-                <button onClick={() => setOffset(0)} title="Reset Alignment" className="px-4 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-900 hover:text-emerald-400 rounded transition-all"><RotateCw size={12} /></button>
-                <button onClick={() => handleOffsetChange(offset + 0.1)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">+0.1</button>
-                <button onClick={() => handleOffsetChange(offset + 1.0)} className="flex-1 py-2 bg-slate-900 border border-emerald-900/30 text-emerald-800 hover:text-emerald-400 hover:border-emerald-500 rounded text-[9px] font-black transition-all">+1.0</button>
-             </div>
-
-             <div className="relative pt-2">
-                <div className="absolute -top-1 left-0 right-0 flex justify-between text-[7px] font-black text-emerald-900 tracking-tighter uppercase px-1">
-                   <span>-50m</span>
-                   <span>Datum_0</span>
-                   <span>+50m</span>
-                </div>
-                <input 
-                   type="range" min={-HARD_LIMIT} max={HARD_LIMIT} step="0.01" value={offset} 
-                   onChange={(e) => setOffset(parseFloat(e.target.value))}
-                   onMouseDown={() => setIsDragging(true)}
-                   onMouseUp={() => setIsDragging(false)}
-                   className="w-full h-2 bg-slate-900 appearance-none rounded-full accent-emerald-500 cursor-pointer border border-emerald-900/10 shadow-inner"
-                />
-             </div>
-          </div>
-        </div>
-        
-        {/* Module B: Sync Monitor */}
-        <div ref={chartContainerRef} className="flex-[2] bg-slate-950/80 rounded-xl border border-emerald-900/20 p-4 relative group overflow-hidden flex flex-col">
-           <div className="absolute top-4 left-4 z-20 flex flex-col space-y-1">
-              <div className="flex items-center space-x-2 bg-slate-900/90 border border-emerald-900/40 px-3 py-1 rounded">
-                <Target size={12} className="text-emerald-500" />
-                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Trace_Lock</span>
-              </div>
-              {validationError && (
-                <div className="text-[8px] font-black text-orange-500 bg-orange-500/10 border border-orange-500/20 px-2 py-1 uppercase animate-in fade-in slide-in-from-left-2">
-                  {validationError}
-                </div>
-              )}
-           </div>
-
-           <div className="flex-1 min-h-0">
-              <ResponsiveContainer width="100%" height="100%">
-                 <ComposedChart data={combinedData} layout="vertical">
-                   <CartesianGrid strokeDasharray="3 3" stroke="#064e3b" opacity={0.1} vertical={false} />
-                   <XAxis type="number" stroke="#064e3b" fontSize={9} axisLine={false} tick={false} domain={['auto', 'auto']} />
-                   <YAxis type="number" dataKey="depth" reversed domain={['auto', 'auto']} stroke="#10b981" fontSize={8} axisLine={{stroke: '#064e3b'}} tickLine={{stroke: '#064e3b'}} tick={{fill: '#064e3b', fontWeight: 'bold'}} />
-                   <Tooltip 
-                     contentStyle={{ backgroundColor: '#020617', border: '1px solid #064e3b', fontSize: '10px', fontFamily: 'Fira Code' }}
-                     itemStyle={{ textTransform: 'uppercase' }}
-                     cursor={{ stroke: '#10b981', strokeWidth: 1 }}
-                   />
-                   
-                   {viewMode === 'DIFFERENTIAL' && (
-                     <Area type="monotone" dataKey="diff" stroke="none" fill="#ef4444" fillOpacity={0.15} isAnimationActive={false} />
-                   )}
-
-                   {signals.find(s => s.id === 'SIG-001')?.visible && (
-                     <Line type="monotone" dataKey="baseGR" name="BASE_LOG" stroke="#10b981" dot={false} strokeWidth={2.5} isAnimationActive={false} />
-                   )}
-                   {signals.find(s => s.id === 'SIG-002')?.visible && (
-                     <Line 
-                       type="monotone" 
-                       dataKey="ghostGR" 
-                       name={ghostLabel} 
-                       stroke="#FF5F1F" 
-                       dot={false} 
-                       strokeWidth={2.5} 
-                       strokeDasharray="5 3" 
-                       isAnimationActive={false} 
-                     />
-                   )}
-                   {signals.map(sig => {
-                     if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.visible) {
-                       return (
-                         <Line 
-                           key={sig.id} 
-                           type="monotone" 
-                           dataKey={sig.id} 
-                           name={sig.name}
-                           stroke={sig.color} 
-                           dot={false} 
-                           strokeWidth={2} 
-                           isAnimationActive={false} 
-                         />
-                       );
-                     }
-                     return null;
-                   })}
-                 </ComposedChart>
-              </ResponsiveContainer>
-           </div>
-        </div>
-
-        {/* Module C: Delta Engine Sidebar */}
-        <div className="w-72 flex flex-col space-y-3">
-          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 flex flex-col justify-between shadow-2xl">
-             <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Diagnostic_Result</span>
-                <Cpu size={14} className="text-emerald-700" />
-             </div>
-             
-             <div className="space-y-6">
-                <div>
-                   <div className="text-[9px] text-emerald-700 font-black uppercase mb-1">Datum_Discordance</div>
-                   <div className={`text-4xl font-black font-terminal tracking-tighter ${Math.abs(offset) > CAUTION_LIMIT ? 'text-orange-500' : 'text-emerald-400'}`}>
-                      {offset.toFixed(2)}m
-                   </div>
-                </div>
-
-                <div>
-                   <div className="flex items-center justify-between mb-1">
-                      <div className="text-[9px] text-emerald-700 font-black uppercase">Sync_Quality</div>
-                      <div className={`text-[10px] font-black ${correlationScore > 95 ? 'text-emerald-400' : 'text-orange-500'}`}>
-                        {correlationScore.toFixed(1)}%
-                      </div>
-                   </div>
-                   <div className="h-2 bg-slate-900 rounded-full overflow-hidden border border-emerald-900/20">
-                      <div 
-                        className={`h-full transition-all duration-500 ${correlationScore > 95 ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-orange-500'}`} 
-                        style={{ width: `${correlationScore}%` }}
-                      ></div>
-                   </div>
-                </div>
-             </div>
-          </div>
-
-          <div className="flex-1 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col overflow-hidden shadow-2xl">
-             <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest">Spectral_Entropy</span>
-                <Activity size={12} className="text-emerald-700" />
-             </div>
-             <div className="flex-1 min-h-0">
-                <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={combinedData.filter((_, i) => i % 5 === 0)}>
-                      <Bar dataKey="diff" fill={correlationScore > 90 ? "#10b98122" : "#ef444422"} stroke={correlationScore > 90 ? "#10b981" : "#ef4444"} strokeWidth={1} isAnimationActive={false} />
-                   </BarChart>
-                </ResponsiveContainer>
-             </div>
+              </form>
+            )}
           </div>
 
           <button 
-            onClick={handleExportPNG}
-            disabled={isExporting}
-            className={`w-full py-4 border rounded font-black uppercase text-[10px] tracking-[0.2em] flex items-center justify-center space-x-3 transition-all group relative overflow-hidden ${isExporting ? 'bg-orange-500/10 border-orange-500/40 text-orange-500' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/20 shadow-lg'}`}
+            onClick={() => setViewMode(prev => prev === 'OVERLAY' ? 'DIFFERENTIAL' : 'OVERLAY')}
+            className={`px-4 py-2 border rounded text-[10px] font-black uppercase transition-all ${viewMode === 'DIFFERENTIAL' ? 'bg-orange-500 border-orange-400 text-slate-950 shadow-[0_0_15px_rgba(249,115,22,0.3)]' : 'bg-slate-900 border-emerald-900/40 text-emerald-400'}`}
           >
-            {isExporting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Generating...</span>
-              </>
-            ) : (
-              <>
-                <Shield size={16} className="group-hover:scale-110 transition-transform" />
-                <span>Export Forensic Trace</span>
-              </>
-            )}
+            {viewMode}
+          </button>
+          <button 
+            onClick={autoLineup}
+            disabled={isSyncing}
+            className="flex items-center space-x-2 px-6 py-2 bg-emerald-500 text-slate-950 rounded font-black text-[10px] uppercase tracking-widest hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)] disabled:opacity-50"
+          >
+            {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
+            <span>Auto_Lineup</span>
           </button>
         </div>
       </div>
 
-      <div className={`p-2.5 rounded border flex items-center justify-between transition-all ${correlationScore > 95 ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-orange-500/5 border-orange-500/20'}`}>
-         <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2">
-               {correlationScore > 95 ? <CheckCircle2 size={14} className="text-emerald-500" /> : <AlertTriangle size={14} className="text-orange-500 animate-pulse" />}
-               <span className={`text-[10px] font-black uppercase tracking-widest ${correlationScore > 95 ? 'text-emerald-400' : 'text-orange-400'}`}>
-                 {correlationScore > 95 ? 'Optimal_Sync_Achieved' : 'Discordance_Detected'}
-               </span>
-            </div>
-            <div className="flex items-center space-x-2">
-               <Hash size={12} className="text-emerald-900" />
-               <span className="text-[9px] text-emerald-900 uppercase font-black">TRACE_GUID: LOCK_0XF</span>
-            </div>
-         </div>
-         <div className="flex items-center space-x-2">
-            <ScanLine size={12} className="text-emerald-900" />
-            <span className="text-[8px] text-emerald-900 font-black uppercase">Datum_Verified_By_Brahan</span>
-         </div>
-      </div>
+      <div className="flex-1 flex flex-col xl:flex-row gap-4 min-h-0">
+        <SyncMonitorChart 
+          combinedData={combinedData} 
+          signals={signals} 
+          viewMode={viewMode} 
+          ghostLabel={ghostLabel} 
+          validationError={validationError}
+          offset={offset}
+          anomalies={detectedAnomalies}
+        />
 
+        <div className="w-full xl:w-80 flex flex-col space-y-4">
+          {/* Detected Anomalies Panel */}
+          <div className="glass-panel p-5 rounded-lg border border-orange-900/30 bg-slate-900/60 flex flex-col space-y-3 shadow-xl max-h-[300px] overflow-hidden">
+            <h3 className="text-[10px] font-black text-orange-400 uppercase tracking-widest flex items-center justify-between border-b border-orange-900/20 pb-2">
+              <span>Detected_Anomalies</span>
+              <AlertTriangle size={12} className={detectedAnomalies.length > 0 ? "animate-pulse" : "text-emerald-900"} />
+            </h3>
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+              {detectedAnomalies.length > 0 ? detectedAnomalies.map(anomaly => (
+                <div key={anomaly.id} className={`p-3 bg-slate-950/80 border rounded transition-all hover:bg-slate-900 cursor-default ${anomaly.severity === 'CRITICAL' ? 'border-red-500/40' : 'border-orange-500/30'}`}>
+                   <div className="flex justify-between items-center mb-1">
+                      <span className={`text-[10px] font-black ${anomaly.severity === 'CRITICAL' ? 'text-red-400' : 'text-orange-400'}`}>{anomaly.severity}</span>
+                      <span className="text-[8px] font-mono text-emerald-900">{anomaly.id}</span>
+                   </div>
+                   <div className="text-[11px] font-terminal text-emerald-100">{anomaly.startDepth.toFixed(1)}m - {anomaly.endDepth.toFixed(1)}m</div>
+                   <div className="flex justify-between items-end mt-2">
+                      <div className="text-[8px] text-emerald-800 uppercase font-black">AVG_DELTA: {anomaly.avgDiff.toFixed(2)} API</div>
+                      <div className="p-1 text-emerald-900 hover:text-emerald-400"><Eye size={12} /></div>
+                   </div>
+                </div>
+              )) : (
+                <div className="h-full flex flex-col items-center justify-center opacity-20 italic text-[10px] py-8 text-center px-4">
+                  {isScanningAnomalies ? (
+                    <span className="animate-pulse">Scanning depth intervals...</span>
+                  ) : (
+                    <span>No active anomalies flagged. Run scan to identify discordance.</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="glass-panel p-5 rounded-lg border border-emerald-900/30 bg-slate-900/60 flex flex-col space-y-5 shadow-xl">
+            <div className="flex items-center justify-between border-b border-emerald-900/20 pb-2">
+              <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center">
+                <span>Forensic_Controls</span>
+                <Target size={12} className="ml-2 text-emerald-900" />
+              </h3>
+              <button 
+                onClick={animateSync}
+                disabled={isSyncing}
+                className={`p-1.5 rounded transition-all group ${isSyncing ? 'text-orange-500 bg-orange-500/10' : 'text-emerald-500 hover:bg-emerald-500/20'}`}
+                title="Smooth Sync Animation"
+              >
+                {isSyncing ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} className="group-hover:scale-110" fill="currentColor" />}
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className={`p-3 rounded border bg-slate-950/90 transition-all ${validationError ? (Math.abs(offset) > OFFSET_SAFE_LIMIT ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'border-orange-500') : 'border-emerald-900/40'}`}>
+                <div className="flex justify-between items-center mb-2">
+                   <div className="flex items-center space-x-2">
+                      <ShieldAlert size={14} className={validationError ? (Math.abs(offset) > OFFSET_SAFE_LIMIT ? 'text-red-500 animate-pulse' : 'text-orange-500') : 'text-emerald-900'} />
+                      <span className="text-[8px] font-black text-emerald-900 uppercase">Input_Offset</span>
+                   </div>
+                   <span className={`text-[12px] font-black font-terminal ${validationError ? (Math.abs(offset) > OFFSET_SAFE_LIMIT ? 'text-red-400' : 'text-orange-400') : 'text-emerald-400'}`}>
+                     {offset.toFixed(3)}m
+                   </span>
+                </div>
+                
+                <div className="flex space-x-2">
+                  <input 
+                    type="number"
+                    step="0.1"
+                    value={offset.toFixed(3)}
+                    onChange={(e) => handleOffsetChange(parseFloat(e.target.value) || 0)}
+                    className="flex-1 bg-slate-900 border border-emerald-900/30 rounded px-2 py-1 text-[11px] text-emerald-100 font-terminal outline-none focus:border-emerald-500"
+                  />
+                  <button 
+                    onClick={() => handleOffsetChange(0)}
+                    className="px-2 bg-slate-800 text-emerald-900 hover:text-emerald-400 rounded transition-colors"
+                    title="Reset to 0"
+                  >
+                    <RotateCw size={12} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 px-1">
+                <div className="flex justify-between text-[8px] font-black text-emerald-900 uppercase">
+                  <span>Shift_Voxel</span>
+                  <span>±{OFFSET_HARD_LIMIT}m LIMIT</span>
+                </div>
+                <input 
+                  type="range" min={-OFFSET_HARD_LIMIT} max={OFFSET_HARD_LIMIT} step="0.1" 
+                  value={offset} 
+                  onChange={e => handleOffsetChange(parseFloat(e.target.value))}
+                  className={`w-full h-1.5 bg-slate-800 appearance-none rounded-full cursor-pointer transition-all`} 
+                />
+              </div>
+
+              <div className="space-y-1.5 px-1 pt-2 border-t border-emerald-900/10">
+                <div className="flex justify-between text-[8px] font-black text-emerald-900 uppercase tracking-widest">
+                  <span className="flex items-center"><Filter size={10} className="mr-1" /> Sensitivity</span>
+                  <span className="text-orange-400">{anomalyThreshold} API</span>
+                </div>
+                <input 
+                  type="range" min="5" max="100" step="1" 
+                  value={anomalyThreshold} 
+                  onChange={e => setAnomalyThreshold(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 appearance-none rounded-full cursor-pointer accent-orange-500 transition-all" 
+                />
+              </div>
+
+              {validationError && (
+                <div className={`p-2.5 rounded border animate-in slide-in-from-top-1 flex items-start space-x-2 ${Math.abs(offset) > OFFSET_SAFE_LIMIT ? 'bg-red-500/10 border-red-500/40 text-red-400' : 'bg-orange-500/10 border-orange-500/40 text-orange-400'}`}>
+                  {Math.abs(offset) > OFFSET_SAFE_LIMIT ? <AlertOctagon size={14} className="flex-shrink-0 mt-0.5" /> : <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />}
+                  <span className="text-[8px] font-black uppercase leading-tight">{validationError}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 glass-panel p-5 rounded-lg border border-emerald-900/30 bg-slate-900/60 overflow-y-auto custom-scrollbar shadow-xl">
+            <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-4 flex items-center">
+               <ScanLine size={12} className="mr-2" /> Signal_Stack
+            </h3>
+            <div className="space-y-2">
+              {signals.map(sig => (
+                <div 
+                  key={sig.id} 
+                  onClick={() => toggleSignalVisibility(sig.id)}
+                  className={`flex items-center justify-between p-2.5 bg-slate-950/80 border rounded hover:border-emerald-500/30 transition-all cursor-pointer group ${sig.visible ? 'border-emerald-900/40 shadow-sm' : 'border-red-950/20 opacity-40 grayscale'}`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: sig.color, color: sig.color }}></div>
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black text-emerald-100 uppercase truncate max-w-[140px]">{sig.id === 'SIG-002' ? ghostLabel : sig.name}</span>
+                      {sig.id.includes('REMOTE') && <span className="text-[6px] text-emerald-900 font-mono tracking-tighter">ARTIFACT_ORIGIN: REMOTE</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center">
+                    {sig.visible ? <CheckCircle2 size={12} className="text-emerald-500" /> : <AlertTriangle size={12} className="text-red-900" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button className="flex items-center justify-center space-x-3 w-full py-3.5 bg-slate-950/90 border border-emerald-500/20 rounded-lg text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 hover:border-emerald-400 transition-all group shadow-xl">
+             <Download size={16} className="group-hover:translate-y-0.5 transition-transform" />
+             <span className="text-[10px] font-black uppercase tracking-[0.2em]">Export_Audit_PNG</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

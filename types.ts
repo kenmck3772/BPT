@@ -16,6 +16,7 @@ export interface TraumaData {
   ici: number;
   metalLoss: number;
   ovality: number;
+  uvIndex: number;
 }
 
 export interface TraumaEvent {
@@ -53,22 +54,32 @@ export interface AnalysisResult {
   summary: string;
 }
 
-export interface PulseDiagnosis {
-  rSquared: number;
-  slope: number;
-  status: string;
-  color: string;
-  diagnosis: string;
+export interface MissionTarget {
+  REGION: string;
+  ASSET: string;
+  BLOCKS: string[];
+  WELLS?: string[];
+  ANOMALY_TYPE: string;
+  DATA_PORTAL: string;
+  PRIORITY: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+export interface MissionConfig {
+  MISSION_ID: string;
+  STATUS: string;
+  TIMESTAMP: string;
+  OPERATOR: string;
+  TARGETS: MissionTarget[];
 }
 
 export interface NDRProject {
   projectId: string;
   name: string;
   quadrant: string;
-  status: 'RELEASED' | 'RESTRICTED' | 'ARCHIVED';
+  status: string;
   releaseDate: string;
-  type: 'well' | 'seismic' | 'survey';
-  wellboreType?: 'VERTICAL' | 'HORIZONTAL' | 'DIRECTIONAL';
+  type: string;
+  wellboreType: string;
   sizeGb: number;
   sha512: string;
   hasDatumShiftIssues?: boolean;
@@ -90,18 +101,22 @@ export interface TubingItem {
 export interface WellReport {
   reportId: string;
   date: string;
-  opType: 'DRILLING' | 'INTERVENTION' | 'COMPLETION';
+  opType: string;
   summary: string;
   eodDepth_m: number;
 }
 
 export enum ActiveModule {
+  MISSION_CONTROL = 'MISSION_CONTROL',
   GHOST_SYNC = 'GHOST_SYNC',
   TRAUMA_NODE = 'TRAUMA_NODE',
   PULSE_ANALYZER = 'PULSE_ANALYZER',
   REPORTS_SCANNER = 'REPORTS_SCANNER',
   VAULT = 'VAULT',
-  CERBERUS = 'CERBERUS'
+  LEGACY_RECOVERY = 'LEGACY_RECOVERY',
+  NORWAY_SOVEREIGN = 'NORWAY_SOVEREIGN',
+  CHANONRY_PROTOCOL = 'CHANONRY_PROTOCOL',
+  PROTOCOL_MANUAL = 'PROTOCOL_MANUAL'
 }
 
 export enum TraumaLayer {
@@ -113,5 +128,6 @@ export enum TraumaLayer {
   STRESS = 'STRESS',
   ICI = 'ICI',
   METAL_LOSS = 'METAL_LOSS',
-  OVALITY = 'OVALITY'
+  OVALITY = 'OVALITY',
+  UV_INDEX = 'UV_INDEX'
 }

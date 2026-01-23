@@ -1,11 +1,10 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   FileSearch, Table, AlertTriangle, FileText, 
   CheckCircle2, SearchCode, Loader2, Play, Hash, 
   Target, ShieldAlert, Dna, Ruler, HardDriveDownload,
   History, X, Clock, Database, ChevronRight, Trash2,
-  Binary, Fingerprint
+  Binary, Fingerprint, ShieldCheck
 } from 'lucide-react';
 import { MOCK_TUBING_TALLY, MOCK_INTERVENTION_REPORTS } from '../constants';
 import { TubingItem, WellReport } from '../types';
@@ -27,8 +26,12 @@ const ReportsScanner: React.FC = () => {
   const [isValidationComplete, setIsValidationComplete] = useState(false);
   const [tally] = useState<TubingItem[]>(MOCK_TUBING_TALLY);
   const [hoveredJoint, setHoveredJoint] = useState<number | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showLogPanel, setShowLogPanel] = useState(true);
   
+  // Refs for auto-scrolling the schematic
+  const schematicContainerRef = useRef<HTMLDivElement>(null);
+  const jointRefs = useRef<Record<number, SVGGElement | null>>({});
+
   const [scanHistory, setScanHistory] = useState<ScanLogEntry[]>(() => {
     const saved = localStorage.getItem('BRAHAN_REPORT_AUDIT_LOGS');
     return saved ? JSON.parse(saved) : [];
@@ -36,6 +39,23 @@ const ReportsScanner: React.FC = () => {
 
   const totalLength = useMemo(() => tally.reduce((acc, curr) => acc + curr.length_m, 0), [tally]);
   const discordance = useMemo(() => Math.abs(totalLength - selectedReport.eodDepth_m), [totalLength, selectedReport]);
+
+  // Effect to scroll the schematic when a joint is hovered in the table
+  useEffect(() => {
+    if (hoveredJoint !== null && jointRefs.current[hoveredJoint] && schematicContainerRef.current) {
+      const segment = jointRefs.current[hoveredJoint];
+      const container = schematicContainerRef.current;
+      
+      const segmentTop = segment!.getBoundingClientRect().top;
+      const containerTop = container.getBoundingClientRect().top;
+      const relativeTop = segmentTop - containerTop + container.scrollTop;
+
+      container.scrollTo({
+        top: relativeTop - container.clientHeight / 2,
+        behavior: 'smooth'
+      });
+    }
+  }, [hoveredJoint]);
 
   const triggerScan = () => {
     setIsScanning(true);
@@ -49,7 +69,6 @@ const ReportsScanner: React.FC = () => {
           setIsScanning(false);
           setIsValidationComplete(true);
           
-          // Generate Forensic Log Entry
           const outcome = discordance > 0.05 ? 'DISCREPANCY' : 'MATCH';
           const flagged = tally.filter(j => j.status === 'DISCREPANT').map(j => j.id);
           const newEntry: ScanLogEntry = {
@@ -74,100 +93,28 @@ const ReportsScanner: React.FC = () => {
   };
 
   const clearHistory = () => {
-    if (window.confirm("PURGE ALL REPORT AUDIT TRACES?")) {
+    if (window.confirm("CONFIRM: PURGE ALL REPORT AUDIT TRACES FROM VAULT?")) {
       setScanHistory([]);
       localStorage.removeItem('BRAHAN_REPORT_AUDIT_LOGS');
     }
   };
 
-  // Schematic scaling factor (pixels per meter)
+  const handleRecallEntry = (entry: ScanLogEntry) => {
+    const report = MOCK_INTERVENTION_REPORTS.find(r => r.reportId === entry.reportId);
+    if (report) {
+      setSelectedReport(report);
+      setIsValidationComplete(true);
+    }
+  };
+
   const SCALE = 6;
   const schematicHeight = totalLength * SCALE + 100;
 
   return (
     <div className="flex flex-col h-full space-y-3 p-4 bg-slate-900/40 border border-emerald-900/30 rounded-lg transition-all relative overflow-hidden font-terminal">
       
-      {/* Forensic History Modal */}
-      {showHistory && (
-        <div className="absolute inset-0 z-[100] bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300 flex items-center justify-center p-8">
-           <div className="w-full max-w-4xl h-full bg-slate-900 border border-emerald-500/30 rounded-lg shadow-[0_0_100px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden">
-              <div className="p-4 border-b border-emerald-900/50 bg-slate-950 flex items-center justify-between">
-                 <div className="flex items-center space-x-3">
-                    <History size={20} className="text-emerald-400" />
-                    <span className="text-sm font-black text-emerald-100 uppercase tracking-[0.3em]">Sovereign_Audit_Vault</span>
-                 </div>
-                 <div className="flex items-center space-x-4">
-                    <button 
-                      onClick={clearHistory}
-                      className="text-[9px] font-black text-emerald-900 hover:text-red-500 flex items-center space-x-1 uppercase transition-colors"
-                    >
-                      <Trash2 size={12} />
-                      <span>Wipe_Vault</span>
-                    </button>
-                    <button onClick={() => setShowHistory(false)} className="text-emerald-500 hover:text-white transition-colors">
-                       <X size={24} />
-                    </button>
-                 </div>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
-                 {scanHistory.length > 0 ? (
-                   scanHistory.map((entry) => (
-                     <div key={entry.id} className={`p-4 rounded border-l-4 bg-slate-950/50 border-y border-r border-emerald-900/20 group hover:bg-slate-950 transition-all ${entry.outcome === 'DISCREPANCY' ? 'border-l-red-500' : 'border-l-emerald-500'}`}>
-                        <div className="flex items-center justify-between mb-2">
-                           <div className="flex items-center space-x-4">
-                              <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">{entry.id}</span>
-                              <div className="flex items-center space-x-2 text-emerald-700">
-                                 <Clock size={12} />
-                                 <span className="text-[9px] font-mono">{new Date(entry.timestamp).toLocaleString()}</span>
-                              </div>
-                           </div>
-                           <div className={`px-3 py-1 rounded text-[10px] font-black tracking-[0.2em] ${entry.outcome === 'DISCREPANCY' ? 'bg-red-500 text-slate-950 animate-pulse' : 'bg-emerald-500 text-slate-950'}`}>
-                              {entry.outcome}
-                           </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-6">
-                           <div className="flex flex-col">
-                              <span className="text-[7px] text-emerald-900 font-black uppercase mb-1">Target_Report</span>
-                              <span className="text-[12px] text-emerald-100 font-black">{entry.reportId}</span>
-                           </div>
-                           <div className="flex flex-col">
-                              <span className="text-[7px] text-emerald-900 font-black uppercase mb-1">Datum_Delta</span>
-                              <span className={`text-[12px] font-black ${entry.outcome === 'DISCREPANCY' ? 'text-red-400' : 'text-emerald-400'}`}>{entry.discordance.toFixed(3)}m</span>
-                           </div>
-                           <div className="flex flex-col">
-                              <span className="text-[7px] text-emerald-900 font-black uppercase mb-1">Flagged_Joints</span>
-                              <div className="flex flex-wrap gap-1">
-                                 {entry.flaggedJoints.length > 0 ? entry.flaggedJoints.map(id => (
-                                   <span key={id} className="px-1.5 py-0.5 bg-red-500/20 text-red-500 text-[8px] rounded border border-red-500/30">J-{id}</span>
-                                 )) : <span className="text-emerald-800 text-[8px]">NONE</span>}
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                   ))
-                 ) : (
-                   <div className="h-full flex flex-col items-center justify-center opacity-20">
-                      <Binary size={64} className="text-emerald-500 mb-4" />
-                      <span className="text-xs font-black uppercase tracking-[0.5em]">No_Archives_Discovered</span>
-                   </div>
-                 )}
-              </div>
-              
-              <div className="p-4 bg-slate-950 border-t border-emerald-900/50 flex items-center justify-between text-[8px] text-emerald-900 font-black uppercase tracking-widest">
-                 <span>Vault_Status: Locked_v2.1</span>
-                 <div className="flex items-center space-x-2">
-                    <Fingerprint size={12} />
-                    <span>User_Auth: Verified</span>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
       {/* Header HUD */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
         <div className="flex items-center space-x-4">
           <div className="p-2 bg-emerald-950/80 border border-emerald-500/40 rounded shadow-[0_0_15px_rgba(16,185,129,0.2)]">
             <FileSearch size={20} className={isScanning ? 'animate-pulse text-orange-500' : 'text-emerald-400'} />
@@ -183,11 +130,11 @@ const ReportsScanner: React.FC = () => {
 
         <div className="flex items-center space-x-2">
           <button 
-            onClick={() => setShowHistory(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-slate-900 border border-emerald-900/50 text-emerald-600 rounded font-black text-[10px] uppercase tracking-widest hover:text-emerald-400 transition-all"
+            onClick={() => setShowLogPanel(!showLogPanel)}
+            className={`flex items-center space-x-2 px-4 py-2 bg-slate-900 border border-emerald-900/50 rounded font-black text-[10px] uppercase tracking-widest transition-all ${showLogPanel ? 'text-emerald-400 border-emerald-400' : 'text-emerald-800 hover:text-emerald-400'}`}
           >
             <History size={14} />
-            <span>Audit_History</span>
+            <span className="hidden sm:inline">Vault_Panel</span>
           </button>
           
           <button 
@@ -196,15 +143,15 @@ const ReportsScanner: React.FC = () => {
             className={`flex items-center space-x-2 px-6 py-2 rounded font-black text-[10px] uppercase tracking-widest transition-all ${isScanning ? 'bg-orange-500/20 text-orange-500 cursor-wait' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]'}`}
           >
             {isScanning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
-            <span>Audit_DDR_Schema</span>
+            <span>Audit_DDR</span>
           </button>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex space-x-4">
+      <div className="flex-1 min-h-0 flex flex-col xl:flex-row gap-4 overflow-hidden">
         
         {/* Module A: Report Selector & Analysis Results */}
-        <div className="w-80 flex flex-col space-y-3">
+        <div className="w-full xl:w-80 flex flex-col space-y-3">
           <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between mb-4 border-b border-emerald-900/20 pb-2">
                <div className="flex items-center space-x-2">
@@ -213,7 +160,7 @@ const ReportsScanner: React.FC = () => {
                </div>
             </div>
             
-            <div className="space-y-2 overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-2 overflow-y-auto max-h-48 xl:max-h-none custom-scrollbar pr-1">
               {MOCK_INTERVENTION_REPORTS.map(report => (
                 <div 
                   key={report.reportId}
@@ -233,7 +180,7 @@ const ReportsScanner: React.FC = () => {
           <div className="flex-1 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col space-y-4 shadow-2xl relative overflow-hidden">
              {isScanning && (
                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm">
-                  <div className="text-[10px] font-black text-orange-400 mb-4 tracking-[0.5em] animate-pulse">SCANNING_TALLY_ARRAY</div>
+                  <div className="text-[10px] font-black text-orange-400 mb-4 tracking-[0.5em] animate-pulse text-center px-4">SCANNING_TALLY_ARRAY</div>
                   <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-orange-500/20">
                     <div className="h-full bg-orange-500 shadow-[0_0_10px_#f97316]" style={{ width: `${scanProgress}%` }}></div>
                   </div>
@@ -245,29 +192,29 @@ const ReportsScanner: React.FC = () => {
                <Dna size={14} className="text-emerald-700" />
              </div>
 
-             <div className="space-y-4">
+             <div className="grid grid-cols-2 xl:grid-cols-1 gap-4">
                 <div className="p-3 bg-slate-900 rounded border border-emerald-900/20">
                   <div className="text-[8px] text-emerald-900 font-black uppercase mb-1">Reported_Datum_EOD</div>
-                  <div className="text-2xl font-black text-emerald-400 font-terminal">{selectedReport.eodDepth_m.toFixed(2)}m</div>
+                  <div className="text-xl xl:text-2xl font-black text-emerald-400 font-terminal">{selectedReport.eodDepth_m.toFixed(2)}m</div>
                 </div>
 
                 <div className={`p-3 bg-slate-900 rounded border transition-all duration-700 ${isValidationComplete ? (discordance > 0.05 ? 'border-red-500/40' : 'border-emerald-500/40') : 'border-emerald-900/20'}`}>
                   <div className="text-[8px] text-emerald-900 font-black uppercase mb-1">Tally_Sum_Calculated</div>
-                  <div className={`text-2xl font-black font-terminal ${isValidationComplete && discordance > 0.05 ? 'text-red-500 animate-pulse' : 'text-emerald-100'}`}>
+                  <div className={`text-xl xl:text-2xl font-black font-terminal ${isValidationComplete && discordance > 0.05 ? 'text-red-500 animate-pulse' : 'text-emerald-100'}`}>
                     {totalLength.toFixed(2)}m
                   </div>
                 </div>
-
-                {isValidationComplete && (
-                  <div className={`flex items-center space-x-3 p-3 rounded border animate-in slide-in-from-left-2 ${discordance > 0.05 ? 'bg-red-500/5 border-red-500/30 text-red-500' : 'bg-emerald-500/5 border-emerald-500/30 text-emerald-500'}`}>
-                    {discordance > 0.05 ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
-                    <div className="flex flex-col">
-                      <span className="text-[9px] font-black uppercase tracking-widest">{discordance > 0.05 ? 'Discordance_Detected' : 'Datum_Match_Verified'}</span>
-                      <span className="text-[8px] font-mono opacity-80">DELTA: {discordance.toFixed(3)}m</span>
-                    </div>
-                  </div>
-                )}
              </div>
+
+             {isValidationComplete && (
+               <div className={`flex items-center space-x-3 p-3 rounded border animate-in slide-in-from-left-2 ${discordance > 0.05 ? 'bg-red-500/5 border-red-500/30 text-red-500' : 'bg-emerald-500/5 border-emerald-500/30 text-emerald-500'}`}>
+                 {discordance > 0.05 ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+                 <div className="flex flex-col">
+                   <span className="text-[9px] font-black uppercase tracking-widest">{discordance > 0.05 ? 'Discordance_Detected' : 'Datum_Match_Verified'}</span>
+                   <span className="text-[8px] font-mono opacity-80">DELTA: {discordance.toFixed(3)}m</span>
+                 </div>
+               </div>
+             )}
              
              <div className="flex-1 bg-slate-900/40 rounded border border-emerald-900/10 p-3 flex flex-col justify-end">
                 <div className="text-[8px] font-mono text-emerald-900 mb-1 flex items-center">
@@ -293,8 +240,8 @@ const ReportsScanner: React.FC = () => {
               </div>
            </div>
 
-           <div className="flex-1 overflow-y-auto custom-scrollbar">
-              <table className="w-full text-left text-[10px] font-terminal border-separate border-spacing-y-1">
+           <div className="flex-1 overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left text-[10px] font-terminal border-separate border-spacing-y-1 min-w-[600px]">
                 <thead className="sticky top-0 bg-slate-950/90 z-20">
                   <tr className="text-emerald-800 uppercase text-[8px] font-black">
                     <th className="pb-2 pl-2">Jnt#</th>
@@ -307,39 +254,47 @@ const ReportsScanner: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {tally.map((item) => (
-                    <tr 
-                      key={item.id}
-                      onMouseEnter={() => setHoveredJoint(item.id)}
-                      onMouseLeave={() => setHoveredJoint(null)}
-                      className={`group transition-all ${hoveredJoint === item.id ? 'bg-emerald-500/20 scale-[0.99] origin-left' : item.status === 'DISCREPANT' ? 'bg-red-500/10 text-red-400' : 'bg-slate-900/40 hover:bg-emerald-500/5 text-emerald-600'}`}
-                    >
-                      <td className="py-2.5 pl-2 font-black border-l-2 border-transparent group-hover:border-emerald-500">{item.id}</td>
-                      <td className="py-2.5 font-bold">{item.type}</td>
-                      <td className="py-2.5 opacity-60">{item.id_in.toFixed(3)}</td>
-                      <td className="py-2.5 opacity-60">{item.grade}</td>
-                      <td className="py-2.5 font-black">{item.length_m.toFixed(2)}</td>
-                      <td className="py-2.5 font-black">{item.cumulative_m.toFixed(2)}</td>
-                      <td className="py-2.5 pr-2">
-                        <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${item.status === 'VALID' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500 text-slate-950 animate-pulse'}`}>
-                          {item.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {tally.map((item) => {
+                    const isHovered = hoveredJoint === item.id;
+                    return (
+                      <tr 
+                        key={item.id}
+                        onMouseEnter={() => setHoveredJoint(item.id)}
+                        onMouseLeave={() => setHoveredJoint(null)}
+                        className={`group transition-all relative ${isHovered ? 'bg-emerald-500/20 scale-[0.995] origin-left' : item.status === 'DISCREPANT' ? 'bg-red-500/10 text-red-400' : 'bg-slate-900/40 hover:bg-emerald-500/5 text-emerald-600'}`}
+                      >
+                        <td className="py-2.5 pl-2 font-black border-l-2 border-transparent group-hover:border-emerald-500">
+                          <div className="flex items-center">
+                            {isHovered && <ChevronRight size={10} className="mr-1 text-emerald-400 animate-in fade-in slide-in-from-left-1" />}
+                            {item.id}
+                          </div>
+                        </td>
+                        <td className="py-2.5 font-bold">{item.type}</td>
+                        <td className="py-2.5 opacity-60">{item.id_in.toFixed(3)}</td>
+                        <td className="py-2.5 opacity-60">{item.grade}</td>
+                        <td className="py-2.5 font-black">{item.length_m.toFixed(2)}</td>
+                        <td className="py-2.5 font-black">{item.cumulative_m.toFixed(2)}</td>
+                        <td className="py-2.5 pr-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${item.status === 'VALID' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500 text-slate-950 animate-pulse'}`}>
+                            {item.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
            </div>
         </div>
 
         {/* Module C: Forensic Schematic Visualizer */}
-        <div className="w-72 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col relative shadow-2xl">
+        <div className="w-full xl:w-72 bg-slate-950/90 border border-emerald-900/30 rounded-xl p-4 flex flex-col relative shadow-2xl h-80 xl:h-auto">
            <div className="flex items-center justify-between mb-4 border-b border-emerald-900/20 pb-2">
               <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Well_Schematic</span>
               <Target size={14} className="text-emerald-700" />
            </div>
 
-           <div className="flex-1 bg-slate-900/20 rounded border border-emerald-900/10 flex flex-col items-center relative custom-scrollbar overflow-y-auto overflow-x-hidden">
+           <div ref={schematicContainerRef} className="flex-1 bg-slate-900/20 rounded border border-emerald-900/10 flex flex-col items-center relative custom-scrollbar overflow-y-auto overflow-x-hidden">
               <svg width="240" height={schematicHeight} className="opacity-90">
                 <rect x="105" y="0" width="30" height={schematicHeight} fill="none" stroke="#064e3b" strokeWidth="1" strokeDasharray="4 2" />
                 
@@ -351,7 +306,8 @@ const ReportsScanner: React.FC = () => {
                   return (
                     <g 
                       key={item.id} 
-                      className="cursor-pointer"
+                      ref={el => jointRefs.current[item.id] = el}
+                      className="cursor-pointer transition-all duration-300"
                       onMouseEnter={() => setHoveredJoint(item.id)}
                       onMouseLeave={() => setHoveredJoint(null)}
                     >
@@ -360,81 +316,124 @@ const ReportsScanner: React.FC = () => {
                         y={yStart} 
                         width="24" 
                         height={height} 
-                        fill={item.status === 'DISCREPANT' ? '#ef444444' : (isHovered ? '#10b98166' : '#10b98111')}
+                        fill={item.status === 'DISCREPANT' ? '#ef444444' : (isHovered ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.08)')}
                         stroke={item.status === 'DISCREPANT' ? '#ef4444' : (isHovered ? '#ffffff' : '#10b98144')}
                         strokeWidth={isHovered ? 2 : 1}
-                        className={`transition-all duration-300 ${isHovered ? 'filter drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]' : ''}`}
+                        className={`transition-all duration-300 ${isHovered ? 'filter drop-shadow-[0_0_12px_rgba(16,185,129,0.8)]' : ''}`}
                       />
                       {isHovered && (
-                        <g className="animate-in fade-in slide-in-from-left-2 duration-200">
-                          {/* Indicator Line Left */}
-                          <line x1="80" y1={yStart + height/2} x2="108" y2={yStart + height/2} stroke="#ffffff" strokeWidth="1" strokeDasharray="2 2" />
-                          {/* Indicator Line Right */}
-                          <line x1="132" y1={yStart + height/2} x2="160" y2={yStart + height/2} stroke="#ffffff" strokeWidth="1" strokeDasharray="2 2" />
+                        <g className="animate-in fade-in slide-in-from-left-2 duration-300">
+                          <line x1="80" y1={yStart + height/2} x2="108" y2={yStart + height/2} stroke="#ffffff" strokeWidth="1.5" strokeDasharray="3 2" />
+                          <line x1="132" y1={yStart + height/2} x2="160" y2={yStart + height/2} stroke="#ffffff" strokeWidth="1.5" strokeDasharray="3 2" />
                           
-                          {/* Tooltip Background */}
-                          <rect 
-                            x="165" 
-                            y={yStart + height/2 - 12} 
-                            width="70" 
-                            height="24" 
-                            rx="2" 
-                            fill="#020617" 
-                            stroke="#10b981" 
-                            strokeWidth="1" 
-                          />
-                          {/* Tooltip Text */}
-                          <text x="170" y={yStart + height/2 - 2} fill="#10b981" fontSize="8" fontWeight="bold">JOINT_{item.id}</text>
-                          <text x="170" y={yStart + height/2 + 8} fill="#10b981" fontSize="7" opacity="0.8">{item.cumulative_m.toFixed(2)}m</text>
+                          {/* Floating Detail Badge */}
+                          <rect x="165" y={yStart + height/2 - 18} width="85" height="36" rx="4" fill="rgba(2, 6, 23, 0.95)" stroke="#10b981" strokeWidth="1" className="shadow-2xl" />
+                          <text x="172" y={yStart + height/2 - 4} fill="#10b981" fontSize="9" fontWeight="black" className="uppercase">JOINT_{item.id}</text>
+                          <text x="172" y={yStart + height/2 + 8} fill="#ffffff" fontSize="8" fontWeight="bold" opacity="0.9">{item.type}</text>
+                          <text x="172" y={yStart + height/2 + 16} fill="#10b981" fontSize="7" opacity="0.6">{item.cumulative_m.toFixed(2)}m</text>
                           
-                          {/* Schematic depth marker left */}
-                          <text x="35" y={yStart + height/2 + 3} fill="#10b981" fontSize="7" fontWeight="black" textAnchor="end">{item.cumulative_m.toFixed(1)}m</text>
+                          {/* Depth Callout */}
+                          <rect x="25" y={yStart + height/2 - 10} width="50" height="20" rx="2" fill="rgba(2, 6, 23, 0.8)" />
+                          <text x="70" y={yStart + height/2 + 3} fill="#10b981" fontSize="8" fontWeight="black" textAnchor="end">{item.cumulative_m.toFixed(1)}m</text>
                         </g>
                       )}
                     </g>
                   );
                 })}
               </svg>
-
-              {/* Fixed Depth Ticks on visualizer bg */}
               <div className="absolute top-0 left-2 bottom-0 flex flex-col justify-between py-2 pointer-events-none opacity-20">
                  <span className="text-[7px] text-emerald-900 font-black">0.00m</span>
                  <span className="text-[7px] text-emerald-900 font-black">DATUM_LOCK</span>
               </div>
            </div>
-
-           <div className="mt-4 p-3 bg-slate-900/60 rounded border border-emerald-900/20 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black text-emerald-900 uppercase">Pressure_Grade:</span>
-                <ShieldAlert size={12} className="text-emerald-500" />
-              </div>
-              <div className="flex items-center space-x-1">
-                 {[...Array(8)].map((_, i) => (
-                   <div key={i} className={`h-1 flex-1 rounded-full ${i < 6 ? 'bg-emerald-500 shadow-[0_0_5px_#10b98122]' : 'bg-slate-800'}`}></div>
-                 ))}
-              </div>
-              <div className="text-[8px] text-center text-emerald-700 font-mono uppercase tracking-widest">10,000 PSI RATING // L80 Grade</div>
-           </div>
         </div>
       </div>
 
+      {/* Persistent Audit Trace Vault */}
+      {showLogPanel && (
+        <div className="h-48 bg-slate-950/95 border border-emerald-900/30 rounded flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom-4">
+          <div className="bg-slate-900/90 border-b border-emerald-900/40 p-2.5 flex items-center justify-between">
+             <div className="flex items-center space-x-3">
+               <ShieldAlert size={14} className="text-emerald-500" />
+               <span className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">Forensic_Report_Audit_Log</span>
+             </div>
+             <div className="flex items-center space-x-4">
+                <span className="text-[7px] font-mono text-emerald-900 uppercase">Archive_Nodes: {scanHistory.length}</span>
+                <button onClick={clearHistory} className="p-1 text-emerald-900 hover:text-red-500 transition-colors">
+                  <Trash2 size={12} />
+                </button>
+             </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1.5">
+            {scanHistory.map((log) => {
+              const isMatch = log.outcome === 'MATCH';
+              return (
+                <div 
+                  key={log.id} 
+                  onClick={() => handleRecallEntry(log)}
+                  className={`flex flex-col sm:flex-row sm:items-center justify-between border-l-4 rounded px-3 py-2 transition-all cursor-pointer group ${isMatch ? 'bg-emerald-500/5 border-emerald-500/40 hover:bg-emerald-500/10' : 'bg-red-500/5 border-red-500/40 hover:bg-red-500/10'}`}
+                >
+                  <div className="flex flex-wrap items-center gap-4 xl:gap-6">
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-emerald-900 uppercase">Scan_ID</span>
+                      <span className="text-[10px] font-black text-emerald-100">{log.id}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-emerald-900 uppercase">Target_Report</span>
+                      <span className="text-[10px] font-black text-emerald-400">{log.reportId}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-black text-emerald-900 uppercase">Datum_Delta</span>
+                      <span className={`text-[10px] font-black ${isMatch ? 'text-emerald-500' : 'text-red-500'}`}>{log.discordance.toFixed(3)}m</span>
+                    </div>
+                    {!isMatch && (
+                      <div className="flex flex-col hidden md:flex">
+                        <span className="text-[8px] font-black text-emerald-900 uppercase">Flagged_Joints</span>
+                        <div className="flex space-x-1">
+                          {log.flaggedJoints.map(id => (
+                            <span key={id} className="text-[9px] font-black text-red-400">J-{id}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-4 mt-2 sm:mt-0">
+                    <span className="text-[8px] font-mono text-emerald-900">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                    <div className={`px-2 py-0.5 rounded text-[8px] font-black tracking-widest ${isMatch ? 'bg-emerald-500 text-slate-950' : 'bg-red-500 text-slate-950 animate-pulse'}`}>
+                      {log.outcome}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {scanHistory.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center opacity-20">
+                <Binary size={32} className="text-emerald-500 mb-2" />
+                <span className="text-[10px] font-black uppercase tracking-[0.4em]">Audit_Vault_Empty</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Footer Alert Bar */}
-      <div className={`p-2.5 rounded border flex items-center justify-between transition-all ${isValidationComplete ? (discordance > 0.05 ? 'bg-red-500/10 border-red-500/40' : 'bg-emerald-500/10 border-emerald-500/40') : 'bg-slate-950/80 border-emerald-900/20'}`}>
-         <div className="flex items-center space-x-6">
+      <div className={`p-2.5 rounded border flex flex-col sm:flex-row items-center justify-between gap-3 transition-all ${isValidationComplete ? (discordance > 0.05 ? 'bg-red-500/10 border-red-500/40' : 'bg-emerald-500/10 border-emerald-500/40') : 'bg-slate-950/80 border-emerald-900/20'}`}>
+         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <div className="flex items-center space-x-2">
                {isValidationComplete ? (discordance > 0.05 ? <AlertTriangle size={14} className="text-red-500 animate-pulse" /> : <CheckCircle2 size={14} className="text-emerald-500" />) : <SearchCode size={14} className="text-emerald-900" />}
                <span className={`text-[10px] font-black uppercase tracking-widest ${isValidationComplete ? (discordance > 0.05 ? 'text-red-400' : 'text-emerald-400') : 'text-emerald-900'}`}>
-                 {isValidationComplete ? (discordance > 0.05 ? 'Report_Inconsistency_Flagged' : 'Tally_Schema_Verified') : 'System_Idle_Waiting_Injest'}
+                 {isScanning ? 'AUDIT_IN_PROGRESS' : isValidationComplete ? (discordance > 0.05 ? 'Report_Inconsistency_Flagged' : 'Tally_Schema_Verified') : 'System_Idle_Waiting_Injest'}
                </span>
             </div>
-            <div className="h-4 w-px bg-emerald-900/30"></div>
+            <div className="hidden sm:block h-4 w-px bg-emerald-900/30"></div>
             <div className="flex items-center space-x-2">
                <Ruler size={12} className="text-emerald-900" />
                <span className="text-[9px] text-emerald-900 uppercase font-black">Tolerance: +/- 0.050m</span>
             </div>
          </div>
          <div className="flex items-center space-x-4">
-            <span className="text-[9px] text-emerald-900 font-mono tracking-tighter">ENGINE: GEMINI_TALLY_SCAN_v1</span>
+            <span className="text-[9px] text-emerald-900 font-mono tracking-tighter hidden md:inline">ENGINE: GEMINI_TALLY_SCAN_v1.2</span>
             <div className="flex items-center space-x-1">
                <div className="w-1 h-1 bg-emerald-500 rounded-full animate-ping"></div>
                <div className="w-1 h-1 bg-emerald-500 rounded-full"></div>

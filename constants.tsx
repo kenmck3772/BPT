@@ -1,5 +1,58 @@
 
-import { LogEntry, TraumaData, PressureData, NDRProject, TubingItem, WellReport, BarrierEvent } from './types';
+import { LogEntry, TraumaData, PressureData, NDRProject, TubingItem, WellReport, BarrierEvent, MissionConfig } from './types';
+
+// Global Mission Hub Data (Ghost Hunter Alpha)
+export const GHOST_HUNTER_MISSION: MissionConfig = {
+  "MISSION_ID": "GHOST_HUNTER_ALPHA",
+  "STATUS": "ACTIVE",
+  "TIMESTAMP": "2026-01-23T09:00:00Z",
+  "OPERATOR": "BRAHAN_SEER",
+  "TARGETS": [
+    {
+      "REGION": "NORTH_SEA",
+      "ASSET": "NINIAN_CENTRAL",
+      "BLOCKS": ["3/3"],
+      "WELLS": ["N-42"],
+      "ANOMALY_TYPE": "RIBBONS_OF_BLACK_RISK",
+      "DATA_PORTAL": "NSTA_NDR",
+      "PRIORITY": "CRITICAL"
+    },
+    {
+      "REGION": "NORWAY_SOVEREIGN",
+      "ASSET": "STATFJORD",
+      "BLOCKS": ["33/9"],
+      "ANOMALY_TYPE": "RADIOACTIVE_SAND_GHOST",
+      "DATA_PORTAL": "NPD_FACTPAGES",
+      "PRIORITY": "CRITICAL"
+    },
+    {
+      "REGION": "NORWAY_SOVEREIGN",
+      "ASSET": "GULLFAKS",
+      "BLOCKS": ["34/10"],
+      "ANOMALY_TYPE": "FAULT_SHADOW_VELOCITY",
+      "DATA_PORTAL": "NPD_FACTPAGES",
+      "PRIORITY": "CRITICAL"
+    },
+    {
+      "REGION": "AUSTRALIA_NW_SHELF",
+      "ASSET": "CARNARVON_BASIN",
+      "BLOCKS": ["WA-1-P", "WA-28-L"],
+      "WELLS": ["RANKIN-12", "GOODWYN-SOUTH-3", "PERSEUS-2"],
+      "ANOMALY_TYPE": "VELOCITY_PUSH_DOWN",
+      "DATA_PORTAL": "NOPIMS_FED",
+      "PRIORITY": "CRITICAL"
+    },
+    {
+      "REGION": "AUSTRALIA",
+      "ASSET": "COOPER_BASIN_TALIA",
+      "BLOCKS": ["ATP_2021", "PEL_106"],
+      "WELLS": ["TALIA-1", "VALI-2"],
+      "ANOMALY_TYPE": "GAS_GHOSTING",
+      "DATA_PORTAL": "PEPS_SA",
+      "PRIORITY": "HIGH"
+    }
+  ]
+};
 
 // Mock Log Data for Ghost-Sync
 export const MOCK_BASE_LOG: LogEntry[] = Array.from({ length: 100 }, (_, i) => ({
@@ -63,29 +116,17 @@ export const MOCK_NDR_PROJECTS: NDRProject[] = [
     hasIntegrityRecords: true
   },
   {
-    projectId: 'TYRA2021well0042',
-    name: 'Tyra Alpha Pulse',
-    quadrant: 'Danish Sector',
+    projectId: 'NINIAN_N42_FORENSIC',
+    name: 'Ninian Central N-42 Audit',
+    quadrant: '3/3',
     status: 'RELEASED',
-    releaseDate: '2022-11-15',
+    releaseDate: '2026-01-22',
     type: 'well',
     wellboreType: 'DIRECTIONAL',
     sizeGb: 0.8,
-    sha512: 'f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc2638bc',
+    sha512: 'f8d2e1a9b...ASPHALTENE_UNSTABLE',
     hasDatumShiftIssues: false,
     hasIntegrityRecords: true
-  },
-  {
-    projectId: 'QUAD211-1992well0007',
-    name: 'Brent Delta Forensic',
-    quadrant: '211',
-    status: 'RESTRICTED',
-    releaseDate: '2028-01-01',
-    type: 'well',
-    wellboreType: 'HORIZONTAL',
-    sizeGb: 4.5,
-    sha512: '89a80e43d9426f0c43109a90e4f3a9e6e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8',
-    hasDatumShiftIssues: true
   }
 ];
 
@@ -102,6 +143,7 @@ for (let d = 1240; d < 1250; d += 0.5) {
     let ici = Math.random() * 20; 
     let metalLoss = Math.random() * 8;
     let ovality = Math.random() * 2;
+    let uvIndex = 1 + Math.random() * 3;
 
     if (d === 1245.5 && f > 10 && f < 15) {
       deviation = 4.8;
@@ -113,19 +155,13 @@ for (let d = 1240; d < 1250; d += 0.5) {
       ici = 95; 
       metalLoss = 28;
       ovality = 5.5;
+      uvIndex = 12.4;
     }
     
-    if (d === 1248.5 && f > 30 && f < 35) {
-      corrosion = 45;
-      wallLoss = 12;
-      waterLeakage = 15;
-      stress = 30;
-      ici = 55;
-      metalLoss = 18;
-      ovality = 3.2;
-    }
-
-    MOCK_TRAUMA_DATA.push({ fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, waterLeakage, stress, ici, metalLoss, ovality });
+    MOCK_TRAUMA_DATA.push({ 
+      fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, 
+      waterLeakage, stress, ici, metalLoss, ovality, uvIndex 
+    });
   }
 }
 

@@ -19,6 +19,7 @@ export async function searchNDRMetadata(
   query: string, 
   status: string = 'ALL', 
   wellboreType: string = 'ALL', 
+  projectType: string = 'ALL',
   ghostOnly: boolean = false
 ): Promise<NDRProject[]> {
   await new Promise(r => setTimeout(r, 800));
@@ -29,11 +30,12 @@ export async function searchNDRMetadata(
       p.projectId.toLowerCase().includes(normalizedQuery) || 
       p.name.toLowerCase().includes(normalizedQuery);
     
-    const matchesStatus = status === 'ALL' || p.status === status;
+    const matchesStatus = status === 'ALL' || p.status.toUpperCase() === status.toUpperCase();
     const matchesWellbore = wellboreType === 'ALL' || p.wellboreType === wellboreType;
+    const matchesType = projectType === 'ALL' || p.type.toLowerCase() === projectType.toLowerCase();
     const matchesGhost = !ghostOnly || p.hasDatumShiftIssues === true;
     
-    return matchesQuery && matchesStatus && matchesWellbore && matchesGhost;
+    return matchesQuery && matchesStatus && matchesWellbore && matchesType && matchesGhost;
   });
 }
 
