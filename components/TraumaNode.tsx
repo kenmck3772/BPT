@@ -3,6 +3,7 @@ import React, { useMemo, useEffect, useRef, useState } from 'react';
 import Plotly from 'plotly.js-dist-min';
 import { MOCK_TRAUMA_DATA } from '../constants';
 import { TraumaLayer, TraumaEvent, TraumaData } from '../types';
+// Added Box to the imports from lucide-react
 import { 
   Scan, Maximize2, Minimize2, Navigation, 
   Target, Info, AlertCircle, Crosshair,
@@ -12,7 +13,9 @@ import {
   CircleDot, Layers, BoxSelect, Cpu,
   Compass, Ruler, MinusSquare, Percent,
   SlidersHorizontal, Settings, Sun,
-  Binary, Terminal, ShieldCheck
+  Binary, Terminal, ShieldCheck,
+  MoveVertical, MousePointer2,
+  Box
 } from 'lucide-react';
 
 const layerToKey: Record<TraumaLayer, keyof Omit<TraumaData, 'fingerId' | 'depth'>> = {
@@ -62,19 +65,16 @@ interface TraumaNodeProps {
 const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocus }) => {
   const plotContainerRef = useRef<HTMLDivElement>(null);
   const [highlightedDepth, setHighlightedDepth] = useState<number | null>(null);
-  const [flashDepth, setFlashDepth] = useState<number | null>(null);
-  const [isTargeting, setIsTargeting] = useState(false);
-  const [activeLayer, setActiveLayer] = useState<TraumaLayer>(TraumaLayer.STRESS);
+  const [activeLayer, setActiveLayer] = useState<TraumaLayer>(TraumaLayer.CORROSION);
   const [isScanning, setIsScanning] = useState(false);
   const [isCrossSectionView, setIsCrossSectionView] = useState(false);
-  const [pingCoord, setPingCoord] = useState<{ x: number, y: number, id: string } | null>(null);
-  const [scanSweepDepth, setScanSweepDepth] = useState<number | null>(null);
-  const [pulseScale, setPulseScale] = useState(1);
   const [uiRevision, setUiRevision] = useState<string>('initial');
   const [isGlitching, setIsGlitching] = useState(false);
+  const [isTargeting, setIsTargeting] = useState(false);
+  const [zScale, setZScale] = useState(2.5);
 
   const [layerOpacities, setLayerOpacities] = useState<Record<TraumaLayer, number>>(
-    Object.values(TraumaLayer).reduce((acc, layer) => ({ ...acc, [layer]: 90 }), {} as Record<TraumaLayer, number>)
+    Object.values(TraumaLayer).reduce((acc, layer) => ({ ...acc, [layer]: 85 }), {} as Record<TraumaLayer, number>)
   );
 
   const allDepths = useMemo(() => Array.from(new Set(MOCK_TRAUMA_DATA.map(d => d.depth))).sort((a, b) => a - b), []);
@@ -85,17 +85,6 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
     return saved ? JSON.parse(saved) : [];
   });
 
-  const clearLogs = () => {
-    if (window.confirm("CONFIRM: WIPE FORENSIC TRACE HISTORY?")) {
-      setBlackBoxLogs([]);
-      localStorage.removeItem('BRAHAN_BLACK_BOX_LOGS');
-    }
-  };
-
-  const handleOpacityChange = (layer: TraumaLayer, value: number) => {
-    setLayerOpacities(prev => ({ ...prev, [layer]: value }));
-  };
-
   const runForensicScan = () => {
     setIsScanning(true);
     setTimeout(() => {
@@ -104,7 +93,7 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
       
       const depthGroups = MOCK_TRAUMA_DATA.reduce((acc, curr) => {
         const val = curr[key] as number;
-        if (val > 15 || (activeLayer === TraumaLayer.UV_INDEX && val > 8)) {
+        if (val > 15 || (activeLayer === TraumaLayer.OVALITY && val > 3)) {
           if (!acc[curr.depth] || (acc[curr.depth][key] as number) < val) {
             acc[curr.depth] = curr;
           }
@@ -115,8 +104,8 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
       const newEvents: TraumaEvent[] = Object.values(depthGroups).map(a => {
         const val = a[key] as number;
         let severity: 'CRITICAL' | 'WARNING' | 'INFO' = 'INFO';
-        if (val > 40 || (activeLayer === TraumaLayer.UV_INDEX && val > 10)) severity = 'CRITICAL';
-        else if (val > 20 || (activeLayer === TraumaLayer.UV_INDEX && val > 5)) severity = 'WARNING';
+        if (val > 40) severity = 'CRITICAL';
+        else if (val > 20) severity = 'WARNING';
 
         return {
           timestamp: new Date().toISOString(),
@@ -125,7 +114,7 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
           value: val,
           unit: unit,
           severity,
-          description: `Anomalous ${activeLayer.toLowerCase()} detected at ${a.depth}m. Trace ID: ${Math.random().toString(36).substring(7).toUpperCase()}`
+          description: `Localized ${activeLayer.toLowerCase()} surge detected at ${a.depth}m. Structural integrity suspect.`
         };
       });
 
@@ -133,7 +122,7 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
       setBlackBoxLogs(updated);
       localStorage.setItem('BRAHAN_BLACK_BOX_LOGS', JSON.stringify(updated));
       setIsScanning(false);
-    }, 1200);
+    }, 1500);
   };
 
   useEffect(() => {
@@ -145,23 +134,16 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
 
     const getColorScale = (layer: TraumaLayer) => {
       switch(layer) {
+        case TraumaLayer.CORROSION:
+          return [[0, '#020617'], [0.3, '#1e293b'], [0.6, '#ef4444'], [1.0, '#ffffff']];
         case TraumaLayer.STRESS:
-          return [
-            [0, '#020617'], [0.1, '#4338ca'], [0.5, '#a855f7'], [0.8, '#e879f9'], 
-            [0.9, '#ffffff'], [1.0, '#fbbf24']
-          ];
+          return [[0, '#020617'], [0.4, '#4338ca'], [0.7, '#a855f7'], [1.0, '#ffffff']];
         case TraumaLayer.TEMPERATURE:
-          return [
-            [0, '#082f49'], [0.3, '#0ea5e9'], [0.7, '#fde047'], [0.9, '#ffffff'], [1.0, '#fbbf24']
-          ];
-        case TraumaLayer.UV_INDEX:
-          return [
-            [0, '#2e1065'], [0.2, '#5b21b6'], [0.5, '#f59e0b'], [0.8, '#fffbeb'], [1.0, '#ffffff']
-          ];
+          return [[0, '#020617'], [0.5, '#fde047'], [1.0, '#fbbf24']];
+        case TraumaLayer.METAL_LOSS:
+          return [[0, '#020617'], [0.4, '#10b981'], [0.8, '#ef4444'], [1.0, '#ffffff']];
         default:
-          return [
-            [0, '#010409'], [0.3, '#064e3b'], [0.6, '#10b981'], [0.9, '#34d399'], [1.0, '#ffffff']
-          ];
+          return [[0, '#020617'], [0.5, '#10b981'], [1.0, '#34d399']];
       }
     };
 
@@ -177,12 +159,11 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
       fingerIds.forEach((fId, idx) => {
         const entry = dataAtDepth.find(d => d.fingerId === fId);
         const val = entry ? (entry[key] as number) : 0;
-        const isFlashed = flashDepth === targetDepth;
-        const r = baseRadius + (isFlashed ? (val + 20) * pulseScale : val);
+        const r = baseRadius + (val * 0.4); 
         
         rValues.push(r);
         thetaValues.push((idx / fingerIds.length) * 360);
-        colorValues.push(isFlashed ? 100 : val);
+        colorValues.push(val);
       });
 
       rValues.push(rValues[0]);
@@ -195,52 +176,39 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
         theta: thetaValues,
         mode: 'lines+markers',
         fill: 'toself',
-        fillcolor: activeLayer === TraumaLayer.STRESS ? 'rgba(168, 85, 247, 0.15)' : activeLayer === TraumaLayer.UV_INDEX ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-        line: { color: activeLayer === TraumaLayer.STRESS ? '#a855f7' : activeLayer === TraumaLayer.UV_INDEX ? '#f59e0b' : '#10b981', width: 3 },
+        fillcolor: 'rgba(16, 185, 129, 0.1)',
+        line: { color: '#10b981', width: 2 },
         marker: {
           color: colorValues,
           colorscale: getColorScale(activeLayer),
-          cmin: 0,
-          cmax: 100,
           size: 6,
-          line: { color: '#010409', width: 1.5 }
+          line: { width: 0.5, color: '#ffffff' }
         },
-        name: `DEPTH_${targetDepth}m`,
-        opacity: layerOpacities[activeLayer] / 100
-      });
-
-      traces.push({
-        type: 'scatterpolar',
-        r: Array(thetaValues.length).fill(baseRadius),
-        theta: thetaValues,
-        mode: 'lines',
-        line: { color: 'rgba(16, 185, 129, 0.3)', width: 1, dash: 'dot' },
-        name: 'NOMINAL_ID'
+        name: `RADIAL_SLICE @ ${targetDepth}m`
       });
 
       layout = {
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
-        margin: { l: 20, r: 20, b: 20, t: 40 },
+        margin: { l: 40, r: 40, b: 40, t: 60 },
         polar: {
-          bgcolor: 'rgba(2, 6, 23, 0.8)',
-          angularaxis: {
-            tickfont: { size: 8, color: '#10b981', family: 'Fira Code' },
-            gridcolor: 'rgba(16, 185, 129, 0.15)',
-            linecolor: 'rgba(16, 185, 129, 0.4)'
+          bgcolor: 'rgba(2, 6, 23, 0.9)',
+          angularaxis: { 
+            tickfont: { size: 9, color: '#064e3b', family: 'Fira Code' }, 
+            gridcolor: 'rgba(16, 185, 129, 0.1)',
+            linecolor: '#10b981'
           },
-          radialaxis: {
-            tickfont: { size: 8, color: '#10b981', family: 'Fira Code' },
-            gridcolor: 'rgba(16, 185, 129, 0.15)',
-            linecolor: 'rgba(16, 185, 129, 0.4)',
-            range: [0, 150]
+          radialaxis: { 
+            tickfont: { size: 8, color: '#10b981', family: 'Fira Code' }, 
+            gridcolor: 'rgba(16, 185, 129, 0.1)',
+            range: [0, 150],
+            linecolor: '#10b981'
           }
         },
         showlegend: false,
         title: {
-          text: `RADIAL_INSPECTOR // MODALITY: ${activeLayer}`,
-          font: { color: '#10b981', size: 12, family: 'Fira Code' },
-          y: 0.95
+          text: `RADIAL_FORENSIC_MAPPING: ${activeLayer} (DEPTH: ${targetDepth}m)`,
+          font: { color: '#10b981', size: 10, family: 'Fira Code' }
         }
       };
     } else {
@@ -260,20 +228,17 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
           const theta = (fIdx / fingerIds.length) * 2 * Math.PI;
           const entry = dataAtDepth.find(d => d.fingerId === fId);
           let val = entry ? (entry[layerToKey[activeLayer]] as number) : 0;
-          const isFlashed = flashDepth === depth;
-          const isNearSweep = scanSweepDepth !== null && Math.abs(depth - scanSweepDepth) < 0.2;
           
-          const r = baseRadius + (isFlashed ? (val + 30) * pulseScale : val);
+          // Topological displacement: Physical deformation based on trauma value
+          const r = baseRadius + (val * 0.6); 
           
           xRow.push(r * Math.cos(theta));
           yRow.push(r * Math.sin(theta));
           zRow.push(depth);
-          
-          if (isFlashed) cRow.push(100); 
-          else if (isNearSweep) cRow.push(80); 
-          else cRow.push(val);
+          cRow.push(val);
         });
 
+        // Close cylinder loop
         xRow.push(xRow[0]);
         yRow.push(yRow[0]);
         zRow.push(zRow[0]);
@@ -285,106 +250,50 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
         colorData.push(cRow);
       });
 
-      const surfaceTrace = {
+      traces.push({
         type: 'surface',
         x: xData,
         y: yData,
         z: zData,
         surfacecolor: colorData,
         colorscale: getColorScale(activeLayer),
-        cmin: 0,
-        cmax: 100,
         showscale: false,
         lighting: { 
-          ambient: 0.35,
-          diffuse: 0.45,
-          specular: 2.8,
-          roughness: 0.04,
-          fresnel: 1.2
+          ambient: 0.6, 
+          diffuse: 0.9, 
+          roughness: 0.1, 
+          specular: 1.5,
+          fresnel: 0.2
         },
-        lightposition: { x: 1000, y: 1000, z: 1300 },
         opacity: layerOpacities[activeLayer] / 100,
-        name: activeLayer
-      };
-
-      traces = [surfaceTrace];
-
-      // Vertical Axis Center Line
-      traces.push({
-        type: 'scatter3d',
-        mode: 'lines',
-        x: [0, 0], y: [0, 0], z: [allDepths[0], allDepths[allDepths.length-1]],
-        line: { color: 'rgba(16, 185, 129, 0.4)', width: 3, dash: 'dot' },
-        name: 'AXIS'
+        name: activeLayer,
+        hoverinfo: 'z+surfacecolor'
       });
 
+      // Target Lock Visualization (3D Rings)
       if (highlightedDepth !== null) {
-        const ringColor = activeLayer === TraumaLayer.STRESS ? '#d946ef' : activeLayer === TraumaLayer.UV_INDEX ? '#f59e0b' : '#10b981';
-        
-        // Targeting Rings
-        [1.2, 1.5, 2.0].forEach(scale => {
-          const ringX: number[] = [];
-          const ringY: number[] = [];
-          const ringZ: number[] = [];
-          for (let i = 0; i <= 64; i++) {
-            const theta = (i / 64) * 2 * Math.PI;
-            ringX.push(baseRadius * scale * Math.cos(theta));
-            ringY.push(baseRadius * scale * Math.sin(theta));
-            ringZ.push(highlightedDepth);
-          }
-          traces.push({
-            type: 'scatter3d',
-            mode: 'lines',
-            x: ringX, y: ringY, z: ringZ,
-            line: { 
-              color: ringColor, 
-              width: scale === 1.2 ? 6 : scale === 1.5 ? 3 : 1, 
-              dash: scale === 2.0 ? 'dash' : 'solid', 
-              opacity: 0.8
-            },
-            name: `TARGET_LOCK_${scale}`
-          });
-        });
+        const ringTheta = Array.from({length: 60}, (_, i) => (i/59) * 2 * Math.PI);
+        const ringX = ringTheta.map(t => baseRadius * 1.8 * Math.cos(t));
+        const ringY = ringTheta.map(t => baseRadius * 1.8 * Math.sin(t));
+        const ringZ = ringTheta.map(() => highlightedDepth);
 
-        // 3D Targeting Vanes (Crosshair)
-        const vaneLen = 250;
         traces.push({
           type: 'scatter3d',
           mode: 'lines',
-          x: [-vaneLen, vaneLen, null, 0, 0],
-          y: [0, 0, null, -vaneLen, vaneLen],
+          x: ringX, y: ringY, z: ringZ,
+          line: { color: '#ef4444', width: 6, opacity: 0.8 },
+          name: 'DEPTH_LOCK_TARGET'
+        });
+
+        // Laser Crosshair Planes
+        traces.push({
+          type: 'scatter3d',
+          mode: 'lines',
+          x: [-120, 120, null, 0, 0],
+          y: [0, 0, null, -120, 120],
           z: [highlightedDepth, highlightedDepth, null, highlightedDepth, highlightedDepth],
-          line: { color: ringColor, width: 2, opacity: 0.4 },
+          line: { color: '#ef4444', width: 2, opacity: 0.4 },
           name: 'TARGET_VANES'
-        });
-
-        // 3D POI Label
-        traces.push({
-          type: 'scatter3d',
-          mode: 'text',
-          x: [0], y: [0], z: [highlightedDepth + 1.5],
-          text: [`[ ! ] ANOMALY_LOCK @ ${highlightedDepth.toFixed(3)}M`],
-          textfont: { family: 'Fira Code', size: 10, color: '#ffffff' },
-          name: 'POI_LABEL'
-        });
-      }
-
-      if (scanSweepDepth !== null) {
-        const sweepX: number[] = [];
-        const sweepY: number[] = [];
-        const sweepZ: number[] = [];
-        for (let i = 0; i <= 60; i++) {
-          const theta = (i / 60) * 2 * Math.PI;
-          sweepX.push(180 * Math.cos(theta));
-          sweepY.push(180 * Math.sin(theta));
-          sweepZ.push(scanSweepDepth);
-        }
-        traces.push({
-          type: 'scatter3d',
-          mode: 'lines',
-          x: sweepX, y: sweepY, z: sweepZ,
-          line: { color: '#10b981', width: 10, opacity: 0.6 },
-          name: 'SCAN_SWEEP'
         });
       }
 
@@ -398,17 +307,17 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
           yaxis: { visible: false },
           zaxis: { 
             title: 'DEPTH (m)', 
-            backgroundcolor: '#010409', gridcolor: '#064e3b', zerolinecolor: '#10b981',
-            tickfont: { color: '#10b981', size: 10, family: 'Fira Code' }
+            backgroundcolor: '#010409', 
+            gridcolor: '#064e3b',
+            tickfont: { color: '#10b981', size: 10, family: 'Fira Code' },
+            titlefont: { color: '#10b981', size: 12, family: 'Fira Code' }
           },
-          dragmode: 'orbit',
           aspectmode: 'manual',
-          aspectratio: { x: 1, y: 1, z: 2.2 },
-          camera: uiRevision === 'initial' ? {
-            eye: { x: 2.2, y: 2.2, z: 1.5 },
-            center: { x: 0, y: 0, z: 0 },
+          aspectratio: { x: 1, y: 1, z: zScale },
+          camera: {
+            eye: { x: 1.6, y: 1.6, z: 1.2 },
             projection: { type: 'perspective' }
-          } : undefined
+          }
         },
         autosize: true
       };
@@ -423,49 +332,15 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
     return () => {
       if (plotContainerRef.current) Plotly.purge(plotContainerRef.current);
     };
-  }, [allDepths, fingerIds, activeLayer, highlightedDepth, flashDepth, scanSweepDepth, pulseScale, uiRevision, isCrossSectionView, layerOpacities]);
+  }, [allDepths, fingerIds, activeLayer, highlightedDepth, uiRevision, isCrossSectionView, layerOpacities, zScale]);
 
-  const handleLogClick = (e: React.MouseEvent, depth: number) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setPingCoord({ 
-      x: e.clientX - rect.left, 
-      y: e.clientY - rect.top, 
-      id: Math.random().toString(36).substring(7) 
-    });
-    
-    setTimeout(() => setPingCoord(null), 1000);
-
+  const handleLogClick = (depth: number) => {
     setHighlightedDepth(depth);
-    setFlashDepth(depth);
     setIsTargeting(true);
     setIsGlitching(true);
     setUiRevision(Date.now().toString());
 
-    // Localized Cylinder Pulse animation
-    setPulseScale(2.8);
-    setTimeout(() => setPulseScale(1.0), 300);
-    setTimeout(() => setPulseScale(1.5), 600);
-    setTimeout(() => setPulseScale(1.0), 900);
-    setTimeout(() => setIsGlitching(false), 500);
-
-    // Dynamic Sweep Animation
-    const startDepth = scanSweepDepth || allDepths[0];
-    const duration = 1400;
-    const startTime = performance.now();
-    
-    const animateSweep = (time: number) => {
-      const elapsed = time - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easedProgress = 1 - Math.pow(1 - progress, 3); // ease-out cubic
-      const currentSweep = startDepth + (depth - startDepth) * easedProgress;
-      setScanSweepDepth(currentSweep);
-      
-      if (progress < 1) requestAnimationFrame(animateSweep);
-      else setTimeout(() => setScanSweepDepth(null), 1200);
-    };
-    requestAnimationFrame(animateSweep);
-
-    // Camera Autopilot zoom to Target
+    // Auto-focus camera logic
     if (plotContainerRef.current && !isCrossSectionView) {
       const zRange = allDepths[allDepths.length-1] - allDepths[0];
       const normalizedZ = (depth - allDepths[0]) / zRange;
@@ -473,272 +348,199 @@ const TraumaNode: React.FC<TraumaNodeProps> = ({ isFocused = false, onToggleFocu
 
       Plotly.relayout(plotContainerRef.current, {
         'scene.camera.center': { x: 0, y: 0, z: cameraCenterZ },
-        'scene.camera.eye': { x: 1.5, y: 1.5, z: cameraCenterZ + 0.7 } 
+        'scene.camera.eye': { x: 1.4, y: 1.4, z: cameraCenterZ + 0.6 } 
       });
     }
 
-    setTimeout(() => setFlashDepth(null), 2500);
-    setTimeout(() => setIsTargeting(false), 7000);
-  };
-
-  const handleLayerChange = (layer: TraumaLayer) => {
-    setIsGlitching(true);
-    setActiveLayer(layer);
-    setUiRevision(Date.now().toString());
-    setTimeout(() => setIsGlitching(false), 300);
+    setTimeout(() => {
+        setIsGlitching(false);
+        setIsTargeting(false);
+    }, 1500);
   };
 
   return (
-    <div className="flex flex-col h-full space-y-3 p-4 bg-slate-900/40 border border-emerald-900/30 rounded-lg transition-all relative overflow-hidden">
+    <div className="flex flex-col h-full space-y-4 p-4 bg-slate-900/40 border border-emerald-900/30 rounded-lg relative overflow-hidden font-terminal">
       
-      {/* HUD OVERLAY - Targeting Details */}
+      {/* TARGETING HUD */}
       {isTargeting && (
-        <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center animate-in fade-in duration-700">
-           <div className={`absolute inset-0 animate-pulse ${activeLayer === TraumaLayer.STRESS ? 'bg-purple-500/10' : activeLayer === TraumaLayer.UV_INDEX ? 'bg-orange-500/10' : 'bg-emerald-500/5'}`}></div>
-           
-           <div className="absolute top-10 right-10 p-6 border border-emerald-500/50 bg-slate-950/95 backdrop-blur-3xl rounded-xl animate-in slide-in-from-right-8 shadow-[0_0_80px_rgba(0,0,0,0.8)] border-l-4">
-              <div className="flex items-center space-x-4 mb-4 border-b border-emerald-900/40 pb-3">
-                 <Target size={20} className="text-emerald-400 animate-spin-slow" />
-                 <span className="text-[12px] font-black text-emerald-400 tracking-[0.4em] uppercase">Structural_Lock_Verified</span>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center space-x-16">
-                  <span className="text-[9px] text-emerald-900 font-black uppercase">Depth_Voxel</span>
-                  <span className="text-[16px] font-terminal font-black text-emerald-100">{highlightedDepth?.toFixed(3)}m</span>
-                </div>
-                <div className="flex justify-between items-center space-x-16">
-                  <span className="text-[9px] text-emerald-900 font-black uppercase">Modality_Layer</span>
-                  <span className={`text-[13px] font-terminal font-black ${activeLayer === TraumaLayer.STRESS ? 'text-purple-400' : activeLayer === TraumaLayer.UV_INDEX ? 'text-orange-400' : 'text-emerald-400'}`}>{activeLayer}</span>
-                </div>
-              </div>
-              <div className="mt-5 flex items-center justify-between text-[8px] font-black text-emerald-700 uppercase">
-                <span className="flex items-center"><Activity size={10} className="mr-1.5" /> Telemetry_Linked</span>
-                <Cpu size={14} className="animate-pulse" />
-              </div>
-           </div>
-
-           <div className={`p-12 border-2 border-dashed rounded-full animate-[ping_4s_cubic-bezier(0,0,0.2,1)_infinite] ${activeLayer === TraumaLayer.STRESS ? 'border-purple-500/30' : 'border-emerald-500/30'}`}>
-              <div className="bg-slate-950/90 p-8 rounded-2xl border border-emerald-500/40 flex flex-col items-center space-y-4 shadow-2xl backdrop-blur-md">
-                <Crosshair size={40} className="text-orange-500 animate-pulse" />
-                <span className="text-[14px] font-black tracking-[0.6em] text-white uppercase drop-shadow-lg">Locked: {highlightedDepth?.toFixed(3)}M</span>
-              </div>
+        <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center animate-in fade-in duration-300">
+           <div className="w-full h-full border-[20px] border-red-500/10 pointer-events-none"></div>
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div className="w-64 h-64 border border-red-500/40 rounded-full animate-ping opacity-20"></div>
            </div>
         </div>
       )}
 
-      <div className="flex flex-col space-y-4 mb-2">
-        <div className="flex items-center justify-between">
+      <div className="flex flex-col space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center space-x-4">
-            <div className={`p-3 bg-emerald-950/80 border rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all ${activeLayer === TraumaLayer.STRESS ? 'border-purple-500/60 shadow-purple-500/30' : activeLayer === TraumaLayer.UV_INDEX ? 'border-orange-500/60 shadow-orange-500/30' : 'border-emerald-500/60'}`}>
-              {layerToIcon[activeLayer]}
+            <div className="p-3 bg-emerald-950/80 border border-emerald-500/60 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+              <Box size={24} className="text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-3xl font-black text-emerald-400 font-terminal uppercase tracking-tighter">Trauma_Node_Forensics</h2>
-              <div className="flex items-center space-x-3">
-                <Binary size={14} className="text-emerald-800" />
-                <span className="text-[10px] text-emerald-800 uppercase tracking-widest font-black">Cylindrical Voxel Autopsy Array</span>
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]"></div>
+              <h2 className="text-2xl font-black text-emerald-400 uppercase tracking-tighter">Trauma_Node_3D</h2>
+              <div className="flex items-center space-x-3 text-[10px] text-emerald-800 font-black uppercase tracking-widest">
+                <Binary size={14} />
+                <span>Surface_Reconstruction_Engine</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 bg-slate-950/50 p-1.5 rounded-lg border border-emerald-900/30">
              <button 
                onClick={() => setIsCrossSectionView(!isCrossSectionView)}
-               className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-black text-[11px] uppercase tracking-widest transition-all ${isCrossSectionView ? 'bg-orange-500 text-slate-950 shadow-[0_0_25px_rgba(249,115,22,0.5)]' : 'bg-slate-900 border border-emerald-900/50 text-emerald-400 hover:border-emerald-400'}`}
+               className={`flex items-center space-x-2 px-4 py-2 rounded font-black text-[10px] uppercase tracking-widest transition-all ${isCrossSectionView ? 'bg-orange-500 text-slate-950' : 'text-emerald-800 hover:text-emerald-400'}`}
+               title="Toggle radial mapping view"
              >
-               <Layers size={16} />
-               <span>{isCrossSectionView ? '3D Cylinder' : 'Radial_Map'}</span>
+               <Layers size={14} />
+               <span>{isCrossSectionView ? '3D_Mode' : 'Radial_Map'}</span>
              </button>
              
              <button 
                onClick={runForensicScan}
                disabled={isScanning}
-               className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-black text-[11px] uppercase tracking-widest transition-all ${isScanning ? 'bg-orange-500/20 text-orange-500 border border-orange-500/40' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/40 hover:bg-emerald-500 hover:text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)]'}`}
+               className={`flex items-center space-x-2 px-4 py-2 rounded font-black text-[10px] uppercase tracking-widest transition-all ${isScanning ? 'bg-orange-500/20 text-orange-500' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'}`}
              >
-               {isScanning ? <Loader2 size={16} className="animate-spin" /> : <Scan size={16} />}
+               {isScanning ? <Loader2 size={14} className="animate-spin" /> : <Scan size={14} />}
                <span>Scan_Sector</span>
              </button>
 
-             <button onClick={onToggleFocus} className="p-2.5 text-emerald-800 hover:text-emerald-400 transition-colors">
-               {isFocused ? <Minimize2 size={28} /> : <Maximize2 size={28} />}
+             <button onClick={onToggleFocus} className="p-2 text-emerald-900 hover:text-emerald-400">
+               {isFocused ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
              </button>
           </div>
         </div>
 
-        {/* Layer Selector Bar */}
-        <div className="flex items-center bg-slate-950/90 p-2.5 border border-emerald-900/40 rounded-xl overflow-x-auto no-scrollbar shadow-2xl">
-           {Object.values(TraumaLayer).map((layer) => {
-             const isActive = activeLayer === layer;
-             const isStress = layer === TraumaLayer.STRESS;
-             const isUV = layer === TraumaLayer.UV_INDEX;
-             
-             return (
-               <button
-                 key={layer}
-                 onClick={() => handleLayerChange(layer)}
-                 className={`flex items-center space-x-2.5 px-4.5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap mr-2 last:mr-0 border ${
-                   isActive 
-                    ? isStress 
-                      ? 'bg-purple-600 text-slate-950 border-purple-400 shadow-[0_0_25px_rgba(168,85,247,0.6)]'
-                      : isUV
-                        ? 'bg-orange-500 text-slate-950 border-orange-400 shadow-[0_0_25px_rgba(249,115,22,0.6)]'
-                        : 'bg-emerald-600 text-slate-950 border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.6)]' 
-                    : 'bg-slate-900/50 text-emerald-900 border-transparent hover:text-emerald-500 hover:bg-emerald-950/20'
-                 }`}
-               >
-                 {layerToIcon[layer]}
-                 <span>{layer}</span>
-               </button>
-             );
-           })}
+        {/* MODALITY SELECTOR */}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-2 no-scrollbar">
+           {Object.values(TraumaLayer).map((layer) => (
+             <button
+               key={layer}
+               onClick={() => {
+                 setIsGlitching(true);
+                 setActiveLayer(layer);
+                 setUiRevision(Date.now().toString());
+                 setTimeout(() => setIsGlitching(false), 250);
+               }}
+               className={`flex items-center space-x-2 px-4 py-2 rounded text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${
+                 activeLayer === layer 
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+                  : 'bg-slate-900/50 text-emerald-900 border-emerald-900/20 hover:text-emerald-500 hover:border-emerald-500/40'
+               }`}
+             >
+               {layerToIcon[layer]}
+               <span>{layer}</span>
+             </button>
+           ))}
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex space-x-4">
-        {/* Main 3D Container */}
-        <div ref={plotContainerRef} className={`flex-1 bg-slate-950 rounded-2xl border border-emerald-900/40 overflow-hidden relative transition-all duration-500 shadow-inner ${isGlitching ? 'blur-[6px] brightness-150' : ''}`}>
-           {isScanning && (
-              <div className="absolute inset-0 pointer-events-none z-20 bg-emerald-500/5 overflow-hidden">
-                 <div className="h-2 w-full absolute top-0 animate-[scanline_2s_linear_infinite] bg-emerald-400/60 shadow-[0_0_40px_rgba(52,211,153,0.6)]"></div>
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row space-y-4 lg:space-y-0 lg:space-x-4">
+        {/* MAIN PLOT CANVAS */}
+        <div 
+          ref={plotContainerRef} 
+          className={`flex-1 bg-slate-950 rounded-xl border border-emerald-900/40 overflow-hidden relative shadow-2xl transition-all duration-300 ${isGlitching ? 'blur-xl grayscale' : ''}`}
+        >
+           {/* HUD Overlay Stats */}
+           <div className="absolute bottom-4 left-4 z-20 space-y-2 pointer-events-none">
+              <div className="bg-slate-950/80 border border-emerald-900/40 px-3 py-1.5 rounded flex items-center space-x-3 backdrop-blur-md">
+                 <MoveVertical size={12} className="text-emerald-500" />
+                 <span className="text-[9px] text-emerald-700 font-black uppercase">Depth_Voxel:</span>
+                 <span className="text-[10px] text-emerald-100 font-black">{highlightedDepth ? highlightedDepth.toFixed(2) : '---'}m</span>
               </div>
-           )}
-           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-emerald-500/5 to-transparent mix-blend-overlay"></div>
+              <div className="bg-slate-950/80 border border-emerald-900/40 px-3 py-1.5 rounded flex items-center space-x-3 backdrop-blur-md">
+                 <MousePointer2 size={12} className="text-emerald-500" />
+                 <span className="text-[9px] text-emerald-700 font-black uppercase">InteractionMode:</span>
+                 <span className="text-[10px] text-emerald-100 font-black">ORBIT_TARGET</span>
+              </div>
+           </div>
         </div>
 
-        {/* Sidebar Calibration Node */}
-        {!isFocused && (
-          <div className="w-80 bg-slate-950/90 border border-emerald-900/30 rounded-2xl p-6 flex flex-col space-y-5 shadow-2xl animate-in slide-in-from-right-6 duration-700 backdrop-blur-md">
-             <div className="flex items-center space-x-3 border-b border-emerald-900/40 pb-4 mb-2">
-                <SlidersHorizontal size={18} className="text-emerald-500" />
-                <span className="text-[12px] font-black text-emerald-400 uppercase tracking-widest">Calibration_Array</span>
+        {/* SIDEBAR ANALYTICS */}
+        <div className="w-full lg:w-80 flex flex-col space-y-4 h-96 lg:h-auto">
+          {/* Layer Calibrator */}
+          <div className="bg-slate-950/90 border border-emerald-900/30 rounded-xl p-5 flex flex-col space-y-4 shadow-xl">
+             <div className="flex items-center justify-between border-b border-emerald-900/10 pb-2">
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Calibration_Array</span>
+                <SlidersHorizontal size={14} className="text-emerald-700" />
              </div>
              
-             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pr-3">
-                {Object.values(TraumaLayer).map((layer) => {
-                  const isActive = activeLayer === layer;
-                  const opacity = layerOpacities[layer];
-                  
-                  return (
-                    <div key={layer} className={`space-y-2.5 p-4 rounded-xl transition-all duration-300 ${isActive ? 'bg-emerald-500/10 border border-emerald-500/20 shadow-xl scale-[1.02]' : 'opacity-40 grayscale-[0.5]'}`}>
-                      <div className="flex items-center justify-between">
-                         <div className="flex items-center space-x-3">
-                            <span className={isActive ? 'text-emerald-400' : 'text-emerald-900'}>{layerToIcon[layer]}</span>
-                            <span className={`text-[10px] font-black uppercase tracking-tight ${isActive ? 'text-emerald-100' : 'text-emerald-900'}`}>{layer}</span>
-                         </div>
-                         <span className={`text-[10px] font-terminal font-black ${isActive ? 'text-emerald-400' : 'text-emerald-950'}`}>{opacity}%</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={opacity} 
-                        onChange={(e) => handleOpacityChange(layer, parseInt(e.target.value))}
-                        className={`w-full h-1.5 bg-slate-900 appearance-none rounded-full cursor-pointer transition-opacity ${isActive ? 'accent-emerald-500' : 'accent-emerald-950 opacity-30'}`} 
-                      />
+             <div className="space-y-4 overflow-y-auto max-h-40 custom-scrollbar pr-1">
+                {Object.values(TraumaLayer).map((layer) => (
+                  <div key={layer} className={`space-y-1.5 ${activeLayer === layer ? 'opacity-100' : 'opacity-30 transition-opacity hover:opacity-60'}`}>
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center space-x-2">
+                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                         <span className="text-[8px] font-black uppercase text-emerald-100">{layer}</span>
+                       </div>
+                       <span className="text-[9px] font-terminal text-emerald-400">{layerOpacities[layer]}%</span>
                     </div>
-                  );
-                })}
+                    <input 
+                      type="range" min="0" max="100" value={layerOpacities[layer]} 
+                      onChange={(e) => setLayerOpacities(p => ({ ...p, [layer]: parseInt(e.target.value) }))}
+                      className="w-full h-1 bg-slate-900 appearance-none rounded-full accent-emerald-500" 
+                    />
+                  </div>
+                ))}
              </div>
 
-             <div className="pt-4 border-t border-emerald-900/20 text-[9px] text-emerald-900 font-black uppercase flex items-center justify-between">
-                <span className="flex items-center space-x-2"><ShieldCheck size={12} /> <span>Veto_Control: Sector_Alpha</span></span>
-                <Settings size={14} className="animate-spin-slow" />
+             <div className="pt-2 border-t border-emerald-900/10 space-y-2">
+                <div className="flex justify-between text-[8px] font-black uppercase text-emerald-900">
+                   <span>Wellbore_Z-Scale</span>
+                   <span>x{zScale.toFixed(1)}</span>
+                </div>
+                <input 
+                  type="range" min="1" max="10" step="0.5" value={zScale} 
+                  onChange={(e) => setZScale(parseFloat(e.target.value))}
+                  className="w-full h-1 bg-slate-900 appearance-none rounded-full accent-orange-500" 
+                />
              </div>
           </div>
-        )}
-      </div>
 
-      {/* Forensic Black Box Logs Panel */}
-      <div className="h-80 bg-slate-950/95 border border-emerald-900/40 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
-        <div className="bg-slate-900/95 border-b border-emerald-900/60 p-4 flex items-center justify-between">
-           <div className="flex items-center space-x-4">
-             <ShieldAlert size={22} className="text-emerald-500" />
-             <span className="text-[12px] font-black text-emerald-400 uppercase tracking-[0.3em]">Forensic_Black_Box_Logs</span>
-           </div>
-           <div className="flex items-center space-x-8">
-              <span className="text-[9px] text-emerald-900 font-mono tracking-[0.2em] uppercase">Archive_Nodes: {blackBoxLogs.length}</span>
-              <button onClick={clearLogs} className="p-2 text-emerald-900 hover:text-red-500 transition-colors bg-black/40 rounded-lg">
-                <Trash2 size={16} />
-              </button>
-           </div>
-        </div>
+          {/* BLACK BOX LOGS */}
+          <div className="flex-1 bg-slate-950/90 border border-emerald-900/40 rounded-xl flex flex-col overflow-hidden shadow-2xl">
+             <div className="bg-slate-900/90 border-b border-emerald-900/60 p-3 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <ShieldAlert size={16} className="text-emerald-500" />
+                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Black_Box_Vault</span>
+                </div>
+                <button onClick={() => setBlackBoxLogs([])} className="p-1 text-emerald-900 hover:text-red-500"><Trash2 size={12} /></button>
+             </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3 bg-slate-950/20">
-          {blackBoxLogs.map((log, idx) => {
-            const isSelected = highlightedDepth === log.depth;
-            const severityBg = log.severity === 'CRITICAL' ? 'bg-red-500/20 border-red-500 text-red-400' : 
-                               log.severity === 'WARNING' ? 'bg-orange-500/20 border-orange-500 text-orange-400' : 
-                               'bg-emerald-500/20 border-emerald-500 text-emerald-400';
-
-            return (
-              <div 
-                key={`${log.timestamp}-${idx}`} 
-                onClick={(e) => handleLogClick(e, log.depth)}
-                className={`flex flex-col border-l-4 rounded-xl p-5 transition-all cursor-pointer relative group ${isSelected ? 'bg-emerald-500/10 border-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.3)]' : 'bg-slate-900/40 border-emerald-900/30 hover:bg-slate-900/80 hover:border-emerald-700'}`}
-              >
-                {pingCoord && isSelected && (
-                  <div className="absolute w-40 h-40 rounded-full bg-emerald-500/20 border border-emerald-500/40 animate-[ping_1.2s_ease-out_infinite] pointer-events-none" style={{ left: pingCoord.x - 80, top: pingCoord.y - 80 }}></div>
+             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+                {blackBoxLogs.map((log, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleLogClick(log.depth)}
+                    className={`flex flex-col border-l-4 rounded px-3 py-2 transition-all cursor-pointer group ${highlightedDepth === log.depth ? 'bg-emerald-500/10 border-emerald-400' : 'bg-slate-900/40 border-emerald-900/30 hover:bg-slate-900/80'}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-[8px] font-black uppercase ${log.severity === 'CRITICAL' ? 'text-red-500' : 'text-orange-400'}`}>{log.severity}</span>
+                      <span className="text-[8px] font-mono text-emerald-900">{log.depth.toFixed(2)}m</span>
+                    </div>
+                    <div className="text-[10px] text-emerald-100 font-black uppercase truncate">{log.layer} DISCREPANCY</div>
+                    <div className="flex items-center justify-between mt-1 text-[8px] text-emerald-700 font-mono">
+                       <span>VALUE: {log.value.toFixed(2)} {log.unit}</span>
+                       <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </div>
+                ))}
+                {blackBoxLogs.length === 0 && (
+                  <div className="h-full flex flex-col items-center justify-center opacity-10 italic text-[10px] py-12 text-center px-8">
+                     <Terminal size={32} className="mb-2" />
+                     <span>No active anomalies archived. Run sector scan to populate.</span>
+                  </div>
                 )}
-                
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-5">
-                    <span className={`px-3 py-1 rounded-md text-[9px] font-black tracking-widest border ${severityBg}`}>
-                      {log.severity}
-                    </span>
-                    <span className="text-[13px] font-black text-emerald-100 uppercase tracking-tight">{log.layer} @ <span className="text-emerald-400 underline decoration-emerald-500/40 underline-offset-4">{log.depth.toFixed(3)}m</span></span>
-                  </div>
-                  <div className="flex items-center space-x-3 text-[10px] font-mono text-emerald-900">
-                    <Clock size={12} />
-                    <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-emerald-100/80 font-mono italic leading-relaxed pr-12">{log.description}</p>
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-emerald-900/30">
-                   <div className="flex items-center space-x-6">
-                      <div className="flex items-center space-x-2">
-                         <Zap size={14} className="text-emerald-500" />
-                         <span className="text-[13px] font-black text-emerald-400">{log.value.toFixed(2)}<span className="text-[9px] opacity-60 ml-1.5 uppercase font-mono">{log.unit}</span></span>
-                      </div>
-                      <div className="h-5 w-px bg-emerald-900/50"></div>
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'text-emerald-400' : 'text-emerald-900'}`}>Trace_Lock: {isSelected ? 'LOCKED_ON_3D' : 'ACTIVE'}</span>
-                   </div>
-                   <div className="flex items-center space-x-3">
-                      <span className={`text-[9px] font-black uppercase tracking-[0.3em] transition-all opacity-0 group-hover:opacity-100 ${isSelected ? 'text-emerald-400' : 'text-emerald-900'}`}>Visual_Bridge_Active</span>
-                      <ChevronRight size={22} className={`transition-all duration-500 ${isSelected ? 'translate-x-3 text-emerald-400' : 'text-emerald-900 group-hover:text-emerald-600'}`} />
-                   </div>
-                </div>
-              </div>
-            );
-          })}
-          {blackBoxLogs.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center opacity-10">
-              <Terminal size={64} className="mb-6" />
-              <span className="text-[14px] font-black uppercase tracking-[0.8em]">Audit_Vault_Empty</span>
-            </div>
-          )}
+             </div>
+          </div>
         </div>
       </div>
 
       <style>{`
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .no-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        @keyframes scanline {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(1100%); }
-        }
-        .animate-spin-slow {
-          animation: spin 8s linear infinite;
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: orbit 20s linear infinite; }
       `}</style>
     </div>
   );

@@ -306,7 +306,8 @@ const ReportsScanner: React.FC = () => {
                   return (
                     <g 
                       key={item.id} 
-                      ref={el => jointRefs.current[item.id] = el}
+                      /* Fix for React ref callback return type requirement: wrap assignment in a block */
+                      ref={el => { jointRefs.current[item.id] = el; }}
                       className="cursor-pointer transition-all duration-300"
                       onMouseEnter={() => setHoveredJoint(item.id)}
                       onMouseLeave={() => setHoveredJoint(null)}

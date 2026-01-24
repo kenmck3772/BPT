@@ -11,7 +11,7 @@ import MissionControl from './components/MissionControl';
 import ChanonryProtocol from './components/ChanonryProtocol';
 import ProtocolManual from './components/ProtocolManual';
 import { ActiveModule, NDRProject, TraumaEvent, MissionTarget } from './types';
-import { getForensicInsight } from './services/geminiService';
+import { getForensicInsight, getSovereignVeto } from './services/geminiService';
 import { searchNDRMetadata, harvestNDRProject } from './services/ndrService';
 import { generateSovereignAudit } from './reporting/pdfEngine';
 import { calculateLinearRegression, diagnoseSawtooth } from './forensic_logic/math';
@@ -137,18 +137,32 @@ const App: React.FC = () => {
     }
   };
 
-  const handleExportAudit = async () => {
+  const handleSovereignVeto = async () => {
     setIsExportingAudit(true);
+    setInsight("INITIATING SOVEREIGN VETO PROTOCOL (v.92)...");
+    
     try {
-      const traumaLogRaw = localStorage.getItem('BRAHAN_BLACK_BOX_LOGS');
-      const traumaLog: TraumaEvent[] = traumaLogRaw ? JSON.parse(traumaLogRaw) : [];
+      // 1. Gather Telemetry Packets
       const pressures = MOCK_PRESSURE_DATA.slice(0, 4).map(d => d.pressure);
       const { rSquared, slope } = calculateLinearRegression(pressures);
-      const pulseDiag = diagnoseSawtooth(rSquared, slope);
-      const totalTally = MOCK_TUBING_TALLY.reduce((acc, curr) => acc + curr.length_m, 0);
-      const report = MOCK_INTERVENTION_REPORTS[0];
-      const discordance = Math.abs(totalTally - report.eodDepth_m);
+      
+      const traumaLogRaw = localStorage.getItem('BRAHAN_BLACK_BOX_LOGS');
+      const traumaLog = traumaLogRaw ? JSON.parse(traumaLogRaw) : [];
+      
+      // Build a comprehensive data packet for Gemini
+      const packet = `
+        GHOST-SYNC_LOGS: Depth Offset identified at 14.5m for Thistle A7.
+        PULSE_ANALYZER_STREAMS: Sawtooth signature detected. Slope: ${slope.toFixed(4)}, R2: ${rSquared.toFixed(4)}.
+        CHANONRY_CII_RATINGS: Current SARA-based instability estimate is CII=1.22.
+        REPORTS_SCANNER_AUDIT: Discrepancy of 0.85m found between DDR joint tally and reported EOD depth.
+        TRAUMA_LOGS: ${traumaLog.length} critical casing events archived, including metal loss at 1245.5m.
+      `;
 
+      // 2. Call the Sovereign Veto Forensic Engine
+      const vetoInsight = await getSovereignVeto(packet);
+      setInsight(vetoInsight);
+
+      // 3. Generate the Audit PDF with the notarized response
       await generateSovereignAudit({
         uwi: "THISTLE_A7_PROTOTYPE",
         projectName: "Thistle A7 Legacy",
@@ -156,29 +170,28 @@ const App: React.FC = () => {
         sha512: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
         offset: 14.5,
         pulseDiagnosis: {
-          status: pulseDiag.status,
+          status: "VETO_ANALYZED",
           slope: slope,
           rSquared: rSquared,
-          diagnosis: pulseDiag.diagnosis
+          diagnosis: vetoInsight.split('\n')[0] // Use the first part as summary
         },
         traumaLog: traumaLog,
         tallyAudit: {
-          reportId: report.reportId,
-          discordance: discordance,
-          totalTally: totalTally,
-          reportedDepth: report.eodDepth_m
+          reportId: "DDR-2024-001",
+          discordance: 0.85,
+          totalTally: MOCK_TUBING_TALLY.reduce((acc, curr) => acc + curr.length_m, 0),
+          reportedDepth: 1200.0
         },
         timestamp: new Date().toISOString(),
-        forensicInsight: insight
+        forensicInsight: vetoInsight
       });
+      
+    } catch (err) {
+      setInsight("SOVEREIGN_VETO_FAILED: ENGINE OVERLOAD.");
     } finally {
       setIsExportingAudit(false);
     }
   };
-
-  useEffect(() => {
-    fetchInsight();
-  }, [activeModule]);
 
   const navItems = [
     { id: ActiveModule.MISSION_CONTROL, icon: <Radar size={14} />, label: 'MISSION' },
@@ -424,7 +437,7 @@ const App: React.FC = () => {
                   <span className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400">Forensic_Architect_Insight</span>
                 </div>
                 <button 
-                  onClick={handleExportAudit}
+                  onClick={handleSovereignVeto}
                   disabled={isExportingAudit}
                   className="flex items-center justify-center space-x-3 px-5 py-2.5 bg-emerald-500 text-slate-950 rounded-md text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all shadow-xl shadow-emerald-500/10 disabled:opacity-50 group"
                 >
@@ -439,9 +452,9 @@ const App: React.FC = () => {
                     <span className="text-[8px] font-black uppercase tracking-widest text-emerald-700">Penetrating Data Abyss...</span>
                   </div>
                 )}
-                <p className="text-[11px] md:text-xs text-emerald-100/90 leading-relaxed font-mono italic pr-4 border-l-2 border-emerald-500/20 pl-4">
+                <div className="text-[11px] md:text-xs text-emerald-100/90 leading-relaxed font-mono italic pr-4 border-l-2 border-emerald-500/20 pl-4 whitespace-pre-wrap">
                   {insight}
-                </p>
+                </div>
                 <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-20 transition-opacity">
                    <Sparkles size={16} className="text-emerald-500" />
                 </div>

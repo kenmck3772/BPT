@@ -1,11 +1,10 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
   Zap, TrendingUp, Search, Layers, Coins, 
   AlertCircle, ShieldCheck, Database, Target,
   ArrowRightLeft, Sparkles, Activity, RefreshCw,
   Droplet, Beaker, Crosshair, Binary, Eye,
-  ArrowDownWideLine, MoveDown, Info, ChevronRight,
+  ArrowDownToLine, MoveDown, Info, ChevronRight,
   Shield, Waves, Anchor
 } from 'lucide-react';
 
