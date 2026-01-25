@@ -1,238 +1,33 @@
 
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brahan Personal Terminal</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&family=Inter:wght@400;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      /* Forensic Color Palette */
-      --emerald-bright: #34d399;
-      --emerald-primary: #10b981;
-      --emerald-dim: #064e3b;
-      --emerald-deep: #022c22;
-      
-      --slate-abyssal: #010409;
-      --slate-deep: #0d1117;
-      
-      --warning-orange: #f97316;
-      --error-red: #ef4444;
-      --info-blue: #3b82f6;
-
-      /* Glow Effects */
-      --emerald-glow: rgba(16, 185, 129, 0.45);
-      --orange-glow: rgba(249, 115, 22, 0.4);
-      --red-glow: rgba(239, 68, 68, 0.4);
-    }
-
-    body {
-      font-family: 'Inter', sans-serif;
-      background-color: var(--slate-abyssal); 
-      color: var(--emerald-primary);
-      margin: 0;
-      overflow: hidden;
-      height: 100vh;
-      /* Deep layered background with improved grid visibility */
-      background-image: 
-        radial-gradient(circle at 50% 50%, #0f172a 0%, var(--slate-abyssal) 100%),
-        linear-gradient(rgba(16, 185, 129, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(16, 185, 129, 0.03) 1px, transparent 1px);
-      background-size: 100% 100%, 30px 30px, 30px 30px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      perspective: 1500px; /* Enhanced perspective for curvature */
-    }
-    
-    #root {
-      width: 98vw;
-      height: 97vh;
-      position: relative;
-      border-radius: 60px; /* More pronounced curved screen corners */
-      overflow: hidden;
-      box-shadow: 
-        inset 0 0 120px rgba(0,0,0,0.9),
-        0 0 50px rgba(16, 185, 129, 0.08),
-        0 15px 50px rgba(0, 0, 0, 0.6);
-      background: var(--slate-abyssal);
-      display: flex;
-      flex-direction: column;
-      border: 2px solid rgba(16, 185, 129, 0.12);
-      transform: rotateX(0.8deg) scale(0.99); /* Subtle tilt and scale to simulate lens bulge */
-      transition: all 0.5s ease;
-    }
-
-    /* Enhanced Screen Curvature Simulation Overlay */
-    .screen-curvature {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      pointer-events: none;
-      z-index: 10001;
-      /* Mimics a physical glass bulge by darkening corners and creating a central focal point with slight reflection */
-      background: 
-        radial-gradient(
-          circle at 50% 50%,
-          rgba(255, 255, 255, 0.015) 0%,
-          rgba(0, 0, 0, 0) 50%,
-          rgba(0, 0, 0, 0.1) 75%,
-          rgba(0, 0, 0, 0.5) 100%
-        ),
-        radial-gradient(
-          ellipse at 50% -10%,
-          rgba(255, 255, 255, 0.05) 0%,
-          rgba(255, 255, 255, 0) 50%
-        );
-    }
-
-    #root::after {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      pointer-events: none;
-      /* Forensic depth vignette with cyan-tinted edges */
-      background: radial-gradient(
-        circle at center, 
-        transparent 40%, 
-        rgba(2, 6, 23, 0.05) 75%, 
-        rgba(0, 0, 0, 0.7) 100%
-      );
-      z-index: 100;
-    }
-
-    .font-terminal {
-      font-family: 'Fira Code', monospace;
-    }
-    
-    @keyframes scanline-roll {
-      0% { transform: translateY(-100vh); }
-      100% { transform: translateY(100vh); }
-    }
-
-    .crt-overlay {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      /* Subtler static line texture for forensic clarity */
-      background: repeating-linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0.05) 0px,
-        rgba(0, 0, 0, 0.05) 1px,
-        transparent 1px,
-        transparent 4px
-      );
-      pointer-events: none;
-      z-index: 9999;
-      opacity: 0.07;
-    }
-
-    .crt-overlay::after {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 60px; /* Softer, broader scanline */
-      background: linear-gradient(to bottom, 
-        transparent, 
-        rgba(16, 185, 129, 0.008) 50%, 
-        transparent
-      );
-      animation: scanline-roll 40s linear infinite; /* Subtler, slower roll */
-    }
-
-    .vignette {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: radial-gradient(
-        circle, 
-        transparent 35%, 
-        rgba(0,0,0,0.1) 65%, 
-        rgba(0,0,0,0.85) 150%
-      );
-      pointer-events: none;
-      z-index: 9997;
-    }
-
-    .noise-overlay {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background-image: url('https://grainy-gradients.vercel.app/noise.svg');
-      background-size: 100px;
-      opacity: 0.01; /* Even subtler noise */
-      pointer-events: none;
-      z-index: 9998;
-      filter: contrast(110%) brightness(100%);
-    }
-
-    @keyframes flicker {
-      0% { opacity: 0.999; }
-      10% { opacity: 0.997; }
-      20% { opacity: 0.999; }
-      30% { opacity: 0.996; }
-      40% { opacity: 1; }
-      50% { opacity: 0.998; }
-      100% { opacity: 1; }
-    }
-    .crt-flicker {
-      animation: flicker 0.25s infinite; /* Faster but much subtler range */
-    }
-
-    ::-webkit-scrollbar {
-      width: 5px;
-    }
-    ::-webkit-scrollbar-track {
-      background: rgba(2, 6, 23, 0.8);
-    }
-    ::-webkit-scrollbar-thumb {
-      background: var(--emerald-dim);
-      border-radius: 0px;
-      border: 1px solid rgba(16, 185, 129, 0.1);
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--emerald-primary);
-    }
-
-    .glass-panel {
-      background: rgba(2, 6, 23, 0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(16, 185, 129, 0.15);
-    }
-
-    .corner-accent {
-      position: absolute;
-      width: 12px;
-      height: 12px;
-      border-color: rgba(16, 185, 129, 0.5);
-      pointer-events: none;
-    }
-    .corner-tl { top: -1px; left: -1px; border-top: 3px solid; border-left: 3px solid; }
-    .corner-tr { top: -1px; right: -1px; border-top: 3px solid; border-right: 3px solid; }
-    .corner-bl { bottom: -1px; left: -1px; border-bottom: 3px solid; border-left: 3px solid; }
-    .corner-br { bottom: -1px; right: -1px; border-bottom: 3px solid; border-right: 3px solid; }
-  </style>
-  <script type="importmap">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brahan Forensic Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "plotly.js-dist-min": "https://esm.sh/plotly.js-dist-min@^2.35.2",
-    "jspdf": "https://esm.sh/jspdf@^2.5.1",
-    "@playwright/test": "https://esm.sh/@playwright/test@^1.57.0"
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "react/jsx-runtime": "https://esm.sh/react@19.0.0/jsx-runtime",
+    "@google/genai": "https://esm.sh/@google/genai@1.38.0",
+    "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react",
+    "recharts": "https://esm.sh/recharts@2.15.0?external=react,react-dom",
+    "html-to-image": "https://esm.sh/html-to-image@1.11.11",
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "plotly.js-dist-min": "https://esm.sh/plotly.js-dist-min@2.27.1",
+    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
+    "react/": "https://esm.sh/react@19.0.0/",
+    "@playwright/test": "https://esm.sh/@playwright/test@^1.58.0"
   }
 }
 </script>
-</head>
-<body>
-  <div class="noise-overlay"></div>
-  <div class="vignette"></div>
-  <div class="screen-curvature"></div>
-  <div class="crt-overlay"></div>
-  <div id="root" class="crt-flicker"></div>
-</body>
+  </head>
+  <body class="bg-black text-white">
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+  </body>
 </html>

@@ -62,4 +62,13 @@ else
     echo -e "${RED}>>> CRITICAL: FORENSIC PIPELINE BREACHED. REVIEW LOGS.${NC}"
 fi
 
+# Concluding Remark
+echo -e "${CYAN}============================================================${NC}"
+if [ $TEST_EXIT_CODE -eq 0 ]; then
+    echo -e "${GREEN}FORENSIC_PIPELINE_STATUS: [VETTED_AND_AUTHORIZED]${NC}"
+else
+    echo -e "${RED}FORENSIC_PIPELINE_STATUS: [BREACH_DETECTED_AUDIT_REQUIRED]${NC}"
+fi
+echo -e "${CYAN}============================================================${NC}"
+
 exit $TEST_EXIT_CODE

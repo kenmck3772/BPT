@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
   Zap, TrendingUp, Search, Layers, Coins, 
@@ -5,19 +6,26 @@ import {
   ArrowRightLeft, Sparkles, Activity, RefreshCw,
   Droplet, Beaker, Crosshair, Binary, Eye,
   ArrowDownToLine, MoveDown, Info, ChevronRight,
-  Shield, Waves, Anchor
+  Shield, Waves, Anchor, Loader2, Lock, Unlock,
+  Activity as Waveform
 } from 'lucide-react';
 
 const LegacyRecovery: React.FC = () => {
   const [isCorrected, setIsCorrected] = useState(false);
-  const [isGlitching, setIsGlitching] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleToggle = () => {
-    setIsGlitching(true);
+    if (isCorrected) {
+      setIsCorrected(false);
+      return;
+    }
+    
+    setIsSyncing(true);
+    // Simulate a high-intensity forensic sync process
     setTimeout(() => {
-      setIsCorrected(!isCorrected);
-      setIsGlitching(false);
-    }, 450);
+      setIsCorrected(true);
+      setIsSyncing(false);
+    }, 1200);
   };
 
   // Generate trace points for the Gamma Ray curve
@@ -75,7 +83,7 @@ const LegacyRecovery: React.FC = () => {
           
           {/* Left Column: Forensic Intel & Controls */}
           <div className="lg:col-span-1 flex flex-col space-y-4">
-            {/* Card 1: The Glitch - Forensic Visualizer */}
+            {/* Card 1: The Glitch - Forensic Snap Visualizer */}
             <div className="glass-panel p-5 rounded-lg border border-amber-900/40 bg-slate-900/60 relative overflow-hidden h-fit">
               <div className="absolute top-0 right-0 p-2 opacity-10">
                 <AlertCircle size={32} className="text-amber-500" />
@@ -84,124 +92,118 @@ const LegacyRecovery: React.FC = () => {
                 <Layers size={14} className="mr-2" /> Data Card 1: The Glitch
               </h3>
               
-              {/* CSS Visualizer: Depth Misalignment */}
-              <div className="p-4 bg-slate-950/90 rounded-md border border-amber-900/20 font-mono text-[9px] leading-tight relative h-56 overflow-hidden mb-4 shadow-inner">
-                <div className="mb-4 text-amber-900 text-[7px] uppercase font-black border-b border-amber-900/10 pb-1">
-                  >> SEISMIC_DATUM_CORRELATION
+              <div className="p-4 bg-slate-950/90 rounded-md border border-amber-900/20 font-mono text-[9px] leading-tight relative h-64 overflow-hidden mb-4 shadow-inner group">
+                <div className="mb-4 text-amber-900 text-[7px] uppercase font-black border-b border-amber-900/10 pb-1 flex justify-between">
+                  <span>>> DATUM_ERROR_MAP</span>
+                  {isSyncing && <span className="animate-pulse text-emerald-500">REALIGNING...</span>}
                 </div>
                 
-                <div className="relative h-40">
+                <div className="relative h-44">
                   {/* Grid Lines for scale */}
-                  <div className="absolute inset-0 flex flex-col justify-between opacity-10 pointer-events-none">
-                    {[...Array(5)].map((_, i) => <div key={i} className="w-full h-px bg-amber-500"></div>)}
+                  <div className="absolute inset-0 flex flex-col justify-between opacity-5 pointer-events-none">
+                    {[...Array(8)].map((_, i) => <div key={i} className="w-full h-px bg-amber-500"></div>)}
                   </div>
 
-                  {/* Target Depth Line (The fixed reference) */}
-                  <div className={`absolute top-1/4 w-full transition-colors duration-1000 z-20 ${isCorrected ? 'text-emerald-400' : 'text-amber-600/60'}`}>
+                  {/* High-speed Scanner Beam (Only active during sync) */}
+                  {isSyncing && (
+                    <div className="absolute inset-x-0 h-10 bg-emerald-500/10 border-y border-emerald-500/40 z-50 animate-scanner-beam pointer-events-none shadow-[0_0_20px_rgba(16,185,129,0.3)]"></div>
+                  )}
+
+                  {/* Target Depth Line (The fixed emerald reference) */}
+                  <div className={`absolute top-1/4 w-full transition-all duration-1000 z-40 ${isCorrected ? 'text-emerald-400' : 'text-emerald-900/20'}`}>
                     <div className="flex items-center space-x-2">
-                       <div className="h-0.5 flex-1 bg-current shadow-[0_0_10px_currentColor]"></div>
-                       <span className="font-black bg-slate-950 px-1">TARGET: 8500'</span>
+                       <div className={`h-0.5 flex-1 bg-current transition-all duration-500 ${isCorrected ? 'shadow-[0_0_15px_#10b981]' : ''}`}></div>
+                       <span className={`font-black bg-slate-950 px-1 transition-all ${isCorrected ? 'scale-110' : 'opacity-40'}`}>REF: 8500'</span>
                     </div>
                   </div>
 
-                  {/* Offset Gap Visualization */}
+                  {/* Measurement Error Bracket (Red) */}
                   <div 
-                    className={`absolute left-1/2 w-px bg-red-500/30 transition-all duration-700 ease-in-out -translate-x-1/2 ${
+                    className={`absolute left-6 w-1 bg-red-500/20 transition-all duration-[1200ms] ease-in-out z-30 ${
                       isCorrected ? 'h-0 top-1/4 opacity-0' : 'h-20 top-1/4 opacity-100'
                     }`}
                   >
-                    <div className="absolute top-1/2 right-4 -translate-y-1/2 whitespace-nowrap text-[7px] font-black text-red-500 uppercase tracking-tighter animate-pulse">
-                      Velocity_Stretch: 12.4'
+                    <div className="absolute top-1/2 left-3 -translate-y-1/2 whitespace-nowrap text-[7px] font-black text-red-500 uppercase tracking-tighter flex items-center">
+                       <ArrowRightLeft size={8} className="mr-1 rotate-90" /> DELTA: 12.4'
                     </div>
+                    {/* Tick marks for bracket */}
+                    <div className="absolute top-0 right-0 w-2 h-px bg-red-500/40"></div>
+                    <div className="absolute bottom-0 right-0 w-2 h-px bg-red-500/40"></div>
                   </div>
 
-                  {/* Actual Depth Line (The "Glitchy" line that snaps) */}
+                  {/* Actual Depth Line (The "Ghost" that snaps) */}
                   <div 
-                    className={`absolute w-full transition-all duration-[600ms] z-30 ${
+                    className={`absolute w-full z-40 transition-all duration-[1200ms] ease-[cubic-bezier(0.19,1,0.22,1)] ${
                       isCorrected 
                         ? 'top-1/4 text-emerald-400' 
-                        : 'top-[calc(25%+80px)] text-amber-400'
-                    }`}
-                    style={{ transitionTimingFunction: 'cubic-bezier(0.19, 1, 0.22, 1)' }}
+                        : 'top-[calc(25%+80px)] text-amber-500'
+                    } ${isSyncing ? 'animate-glitch-vibrate' : ''}`}
                   >
-                    <div className="flex items-center space-x-2">
-                       <div className={`h-0.5 flex-1 bg-current shadow-[0_0_15px_currentColor] ${isCorrected ? '' : 'animate-pulse'}`}></div>
-                       <span className="font-black bg-slate-950 px-1">GHOST: 8512.4'</span>
+                    <div className="flex items-center space-x-2 relative">
+                       {/* Subtle flickering ghost line when not corrected */}
+                       {!isCorrected && !isSyncing && (
+                         <div className="absolute inset-0 h-0.5 bg-amber-500/10 blur-sm animate-pulse"></div>
+                       )}
+                       
+                       <div className={`h-0.5 flex-1 bg-current transition-shadow duration-500 ${isCorrected ? 'animate-snap-flash' : 'shadow-[0_0_8px_currentColor] opacity-90'}`}></div>
+                       
+                       <span className={`font-black bg-slate-950 px-1 transition-transform ${isCorrected ? 'scale-110 text-emerald-400' : 'text-amber-500'}`}>
+                         {isCorrected ? 'LOCKED: 8500\'' : 'GHOST: 8512.4\''}
+                       </span>
+
                        {isCorrected && (
-                         <div className="absolute -top-6 right-0 animate-in fade-in zoom-in duration-300">
-                           <div className="flex items-center space-x-1 px-2 py-0.5 bg-emerald-500 text-slate-950 rounded text-[7px] font-black uppercase tracking-widest">
-                             <ShieldCheck size={10} />
-                             <span>Veto_Locked</span>
-                           </div>
+                         <div className="absolute -left-4 animate-in fade-in zoom-in duration-300">
+                           <Crosshair size={12} className="text-emerald-500" />
                          </div>
                        )}
                     </div>
                   </div>
                 </div>
 
-                <div className="absolute bottom-2 left-3 right-3 flex justify-between items-center">
-                  <div className="text-[7px] text-slate-700 font-mono italic">
-                    {isCorrected ? 'RESIDUAL: 0.000' : 'ERROR_DETECTED: 12.4'}
+                <div className="absolute bottom-2 left-3 right-3 flex justify-between items-center border-t border-amber-900/10 pt-2">
+                  <div className={`text-[7px] font-mono transition-colors ${isCorrected ? 'text-emerald-700' : 'text-slate-700 italic'}`}>
+                    {isCorrected ? 'RESIDUAL: 0.00' : 'UNCERTAINTY: HIGH'}
                   </div>
-                  <div className={`text-[7px] font-black uppercase tracking-widest ${isCorrected ? 'text-emerald-500' : 'text-amber-700'}`}>
-                    {isCorrected ? '>>> CALIBRATED' : '>>> ASYNC_DETECTED'}
+                  <div className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded transition-all ${isCorrected ? 'bg-emerald-500 text-slate-950' : 'text-amber-700 bg-amber-500/5'}`}>
+                    {isSyncing ? 'REALIGNING...' : isCorrected ? '>>> VERIFIED' : '>>> DISCORDANT'}
                   </div>
                 </div>
               </div>
 
               <p className="text-[9px] text-amber-200/70 leading-relaxed font-mono">
-                CRITICAL: Shallow gas velocity pull-up detected. The legacy seismic volume incorrectly positions the target sand package above the actual wellbore intersect. 
+                CRITICAL: Gas cloud velocity attenuation identified. Legacy interpretation failed to account for vertical stretch, missing the target reservoir by 12.4'.
               </p>
             </div>
 
             {/* Toggle Controls */}
             <div className="glass-panel p-5 rounded-lg border border-emerald-900/40 bg-slate-900/80 flex flex-col space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-emerald-100 uppercase tracking-widest">Brahan_Sync_Engine</span>
-                <RefreshCw size={14} className={`text-emerald-500 ${isGlitching ? 'animate-spin' : ''}`} />
+                <span className="text-[10px] font-black text-emerald-100 uppercase tracking-widest">Forensic_Engine</span>
+                <RefreshCw size={14} className={`text-emerald-500 ${isSyncing ? 'animate-spin' : ''}`} />
               </div>
               
               <button 
                 onClick={handleToggle}
+                disabled={isSyncing}
                 className={`w-full py-4 rounded font-black text-[10px] uppercase tracking-[0.3em] transition-all border ${
                   isCorrected 
                     ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.4)]' 
                     : 'bg-amber-500/10 text-amber-500 border-amber-500/40 hover:bg-amber-500 hover:text-slate-950'
                 }`}
               >
-                {isCorrected ? 'REVERT_TO_RAW' : 'INITIATE_BRAHAN_SYNC'}
+                {isSyncing ? 'PROCESSING_TIE...' : isCorrected ? 'DISCONNECT_VAULT' : 'INITIATE_BRAHAN_SYNC'}
               </button>
 
               <div className="p-3 bg-slate-950 rounded border border-emerald-900/20">
                 <div className="flex items-center space-x-2 mb-2">
                    <Binary size={12} className="text-emerald-500" />
-                   <span className="text-[8px] font-black text-emerald-700 uppercase">Tie_Status</span>
+                   <span className="text-[8px] font-black text-emerald-700 uppercase">Archive_State</span>
                 </div>
-                <div className={`text-[10px] font-black uppercase ${isCorrected ? 'text-emerald-400' : 'text-amber-500 animate-pulse'}`}>
-                  {isCorrected ? '[ STATE: TIE_LOCKED ]' : '[ STATE: PUSHED_DOWN ]'}
+                <div className={`text-[10px] font-black uppercase flex items-center space-x-2 ${isCorrected ? 'text-emerald-400' : 'text-amber-500 animate-pulse'}`}>
+                  {isCorrected ? <Lock size={12} /> : <Unlock size={12} />}
+                  <span>{isCorrected ? 'TIE_LOCKED_STABLE' : 'DATUM_UNSTABLE'}</span>
                 </div>
               </div>
-            </div>
-
-            <div className="flex-1 glass-panel p-5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden group">
-               <h3 className="text-[10px] font-black text-emerald-100 mb-4 uppercase tracking-widest flex items-center">
-                 <Coins size={14} className="mr-2" /> Data Card 3: Recovery Asset
-               </h3>
-               <div className="space-y-4">
-                 <div className="flex items-start space-x-3">
-                   <div className="p-1 bg-emerald-500 text-slate-950 rounded">
-                     <Shield size={12} />
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-[8px] font-black text-emerald-100 uppercase tracking-widest">OFFSHORE BYPASSED PAY</span>
-                     <span className="text-[7px] text-emerald-700 font-mono italic">RANKIN-12: Mungaroo Channel A7</span>
-                   </div>
-                 </div>
-                 <div className="p-3 bg-slate-950/80 border border-emerald-500/20 rounded">
-                    <div className="text-[7px] text-emerald-900 font-black uppercase mb-1">Est_Recoverable</div>
-                    <div className="text-xl font-black text-emerald-400">1,200,000 BBLS</div>
-                 </div>
-               </div>
             </div>
           </div>
 
@@ -236,7 +238,7 @@ const LegacyRecovery: React.FC = () => {
             </div>
 
             {/* The Track Canvas */}
-            <div className={`flex-1 relative transition-all duration-300 ${isGlitching ? 'blur-sm grayscale' : ''}`}>
+            <div className={`flex-1 relative transition-all duration-300 ${isSyncing ? 'blur-[1px] grayscale' : ''}`}>
               <svg width="100%" height="100%" viewBox="0 0 400 360" className="overflow-visible">
                 {/* Track Boundaries */}
                 <rect x="150" y="0" width="100" height="360" fill="rgba(16,185,129,0.02)" stroke="#064e3b" strokeWidth="1" strokeDasharray="5 5" />
@@ -319,7 +321,7 @@ const LegacyRecovery: React.FC = () => {
             {/* Visualizer Footer Stats */}
             <div className="mt-4 flex items-center justify-between text-[8px] font-black text-emerald-900 uppercase tracking-widest border-t border-emerald-900/20 pt-3">
                <div className="flex items-center space-x-6">
-                  <span className="flex items-center space-x-1"><Activity size={10} /> <span>TRACE: CARNARVON_V2</span></span>
+                  <span className="flex items-center space-x-1"><Waveform size={10} /> <span>TRACE: CARNARVON_V2</span></span>
                   <span className="flex items-center space-x-1"><Eye size={10} /> <span>VIEW: {isCorrected ? 'WELL_TRUTH' : 'SEISMIC_GHOST'}</span></span>
                </div>
                <span className="text-emerald-950 font-mono">|||||.....|||||||||| [ {isCorrected ? 'TIE_LOCKED' : 'READY'} ]</span>
@@ -332,7 +334,7 @@ const LegacyRecovery: React.FC = () => {
             {/* The Analysis Metrics Card */}
             <div className={`glass-panel p-6 rounded-lg border transition-all duration-500 ${isCorrected ? 'border-emerald-500/40 bg-slate-900 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)]' : 'border-amber-900/40 bg-slate-950 opacity-80'}`}>
               <h3 className={`text-[10px] font-black mb-6 uppercase tracking-widest flex items-center ${isCorrected ? 'text-emerald-400' : 'text-amber-500'}`}>
-                <Activity size={16} className="mr-2" /> Data Card 2: NOPIMS Logic
+                <Activity size={16} className="mr-2" /> Data Card 2: Forensic Logic
               </h3>
               
               <div className="space-y-6">

@@ -1,10 +1,12 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   FileSearch, Table, AlertTriangle, FileText, 
   CheckCircle2, SearchCode, Loader2, Play, Hash, 
   Target, ShieldAlert, Dna, Ruler, HardDriveDownload,
   History, X, Clock, Database, ChevronRight, Trash2,
-  Binary, Fingerprint, ShieldCheck
+  Binary, Fingerprint, ShieldCheck, AlertOctagon, 
+  Eye, CornerRightDown
 } from 'lucide-react';
 import { MOCK_TUBING_TALLY, MOCK_INTERVENTION_REPORTS } from '../constants';
 import { TubingItem, WellReport } from '../types';
@@ -39,6 +41,7 @@ const ReportsScanner: React.FC = () => {
 
   const totalLength = useMemo(() => tally.reduce((acc, curr) => acc + curr.length_m, 0), [tally]);
   const discordance = useMemo(() => Math.abs(totalLength - selectedReport.eodDepth_m), [totalLength, selectedReport]);
+  const discrepantJoints = useMemo(() => tally.filter(j => j.status === 'DISCREPANT'), [tally]);
 
   // Effect to scroll the schematic when a joint is hovered in the table
   useEffect(() => {
@@ -69,8 +72,8 @@ const ReportsScanner: React.FC = () => {
           setIsScanning(false);
           setIsValidationComplete(true);
           
-          const outcome = discordance > 0.05 ? 'DISCREPANCY' : 'MATCH';
-          const flagged = tally.filter(j => j.status === 'DISCREPANT').map(j => j.id);
+          const outcome = (discordance > 0.05 || discrepantJoints.length > 0) ? 'DISCREPANCY' : 'MATCH';
+          const flagged = discrepantJoints.map(j => j.id);
           const newEntry: ScanLogEntry = {
             id: `AUDIT-${Math.random().toString(36).substring(7).toUpperCase()}`,
             reportId: selectedReport.reportId,
@@ -184,6 +187,7 @@ const ReportsScanner: React.FC = () => {
                   <div className="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-orange-500/20">
                     <div className="h-full bg-orange-500 shadow-[0_0_10px_#f97316]" style={{ width: `${scanProgress}%` }}></div>
                   </div>
+                  <span className="mt-4 text-[8px] text-emerald-900 font-mono tracking-tighter uppercase animate-pulse">Analyzing depth vectors...</span>
                </div>
              )}
 
@@ -198,7 +202,7 @@ const ReportsScanner: React.FC = () => {
                   <div className="text-xl xl:text-2xl font-black text-emerald-400 font-terminal">{selectedReport.eodDepth_m.toFixed(2)}m</div>
                 </div>
 
-                <div className={`p-3 bg-slate-900 rounded border transition-all duration-700 ${isValidationComplete ? (discordance > 0.05 ? 'border-red-500/40' : 'border-emerald-500/40') : 'border-emerald-900/20'}`}>
+                <div className={`p-3 bg-slate-900 rounded border transition-all duration-700 ${isValidationComplete ? (discordance > 0.05 ? 'border-red-500/40 bg-red-500/5' : 'border-emerald-500/40') : 'border-emerald-900/20'}`}>
                   <div className="text-[8px] text-emerald-900 font-black uppercase mb-1">Tally_Sum_Calculated</div>
                   <div className={`text-xl xl:text-2xl font-black font-terminal ${isValidationComplete && discordance > 0.05 ? 'text-red-500 animate-pulse' : 'text-emerald-100'}`}>
                     {totalLength.toFixed(2)}m
@@ -207,16 +211,34 @@ const ReportsScanner: React.FC = () => {
              </div>
 
              {isValidationComplete && (
-               <div className={`flex items-center space-x-3 p-3 rounded border animate-in slide-in-from-left-2 ${discordance > 0.05 ? 'bg-red-500/5 border-red-500/30 text-red-500' : 'bg-emerald-500/5 border-emerald-500/30 text-emerald-500'}`}>
-                 {discordance > 0.05 ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
-                 <div className="flex flex-col">
-                   <span className="text-[9px] font-black uppercase tracking-widest">{discordance > 0.05 ? 'Discordance_Detected' : 'Datum_Match_Verified'}</span>
-                   <span className="text-[8px] font-mono opacity-80">DELTA: {discordance.toFixed(3)}m</span>
+               <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                 <div className={`flex items-center space-x-3 p-3 rounded border ${discordance > 0.05 ? 'bg-red-500/5 border-red-500/30 text-red-500' : 'bg-emerald-500/5 border-emerald-500/30 text-emerald-500'}`}>
+                   {discordance > 0.05 ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+                   <div className="flex flex-col">
+                     <span className="text-[9px] font-black uppercase tracking-widest">{discordance > 0.05 ? 'Discordance_Detected' : 'Datum_Match_Verified'}</span>
+                     <span className="text-[8px] font-mono opacity-80">DELTA: {discordance.toFixed(3)}m</span>
+                   </div>
                  </div>
+
+                 {discrepantJoints.length > 0 && (
+                   <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded flex flex-col space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <AlertOctagon size={14} className="text-orange-500 animate-pulse" />
+                        <span className="text-[9px] font-black uppercase text-orange-400 tracking-tighter">Missing_Artifact_Identified</span>
+                      </div>
+                      <p className="text-[8px] text-orange-200/60 leading-tight italic">"Joint inventory mismatch detected at sequence index {discrepantJoints[0].id}. Length inconsistency suggests missing data or physically absent hardware."</p>
+                      <button 
+                        onClick={() => setHoveredJoint(discrepantJoints[0].id)}
+                        className="text-[8px] font-black uppercase text-emerald-500 flex items-center hover:text-emerald-400"
+                      >
+                        <Eye size={10} className="mr-1" /> Focus on discrepancy
+                      </button>
+                   </div>
+                 )}
                </div>
              )}
              
-             <div className="flex-1 bg-slate-900/40 rounded border border-emerald-900/10 p-3 flex flex-col justify-end">
+             <div className="flex-1 bg-slate-900/40 rounded border border-emerald-900/10 p-3 flex flex-col justify-end mt-auto">
                 <div className="text-[8px] font-mono text-emerald-900 mb-1 flex items-center">
                   <Hash size={10} className="mr-1" /> ARCHIVE_HANDSHAKE: ACTIVE
                 </div>
@@ -256,16 +278,27 @@ const ReportsScanner: React.FC = () => {
                 <tbody>
                   {tally.map((item) => {
                     const isHovered = hoveredJoint === item.id;
+                    const isDiscrepant = item.status === 'DISCREPANT';
+                    
                     return (
                       <tr 
                         key={item.id}
                         onMouseEnter={() => setHoveredJoint(item.id)}
                         onMouseLeave={() => setHoveredJoint(null)}
-                        className={`group transition-all relative ${isHovered ? 'bg-emerald-500/20 scale-[0.995] origin-left' : item.status === 'DISCREPANT' ? 'bg-red-500/10 text-red-400' : 'bg-slate-900/40 hover:bg-emerald-500/5 text-emerald-600'}`}
+                        className={`group transition-all relative ${
+                          isDiscrepant && isValidationComplete 
+                            ? 'bg-red-500/20 text-red-100 ring-1 ring-red-500 animate-pulse' 
+                            : isHovered 
+                              ? 'bg-emerald-500/20 scale-[0.995] origin-left' 
+                              : isDiscrepant 
+                                ? 'bg-red-500/10 text-red-400' 
+                                : 'bg-slate-900/40 hover:bg-emerald-500/5 text-emerald-600'
+                        }`}
                       >
                         <td className="py-2.5 pl-2 font-black border-l-2 border-transparent group-hover:border-emerald-500">
                           <div className="flex items-center">
                             {isHovered && <ChevronRight size={10} className="mr-1 text-emerald-400 animate-in fade-in slide-in-from-left-1" />}
+                            {isDiscrepant && isValidationComplete && <AlertTriangle size={10} className="mr-1 text-red-500" />}
                             {item.id}
                           </div>
                         </td>
@@ -275,7 +308,7 @@ const ReportsScanner: React.FC = () => {
                         <td className="py-2.5 font-black">{item.length_m.toFixed(2)}</td>
                         <td className="py-2.5 font-black">{item.cumulative_m.toFixed(2)}</td>
                         <td className="py-2.5 pr-2">
-                          <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${item.status === 'VALID' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500 text-slate-950 animate-pulse'}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${item.status === 'VALID' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500 text-slate-950 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`}>
                             {item.status}
                           </span>
                         </td>
@@ -294,7 +327,7 @@ const ReportsScanner: React.FC = () => {
               <Target size={14} className="text-emerald-700" />
            </div>
 
-           <div ref={schematicContainerRef} className="flex-1 bg-slate-900/20 rounded border border-emerald-900/10 flex flex-col items-center relative custom-scrollbar overflow-y-auto overflow-x-hidden">
+           <div ref={schematicContainerRef} className="flex-1 bg-slate-900/10 rounded border border-emerald-900/10 flex flex-col items-center relative custom-scrollbar overflow-y-auto overflow-x-hidden p-2">
               <svg width="240" height={schematicHeight} className="opacity-90">
                 <rect x="105" y="0" width="30" height={schematicHeight} fill="none" stroke="#064e3b" strokeWidth="1" strokeDasharray="4 2" />
                 
@@ -302,11 +335,11 @@ const ReportsScanner: React.FC = () => {
                   const yStart = (item.cumulative_m - item.length_m) * SCALE + 20; 
                   const height = item.length_m * SCALE;
                   const isHovered = hoveredJoint === item.id;
+                  const isDiscrepant = item.status === 'DISCREPANT';
                   
                   return (
                     <g 
                       key={item.id} 
-                      /* Fix for React ref callback return type requirement: wrap assignment in a block */
                       ref={el => { jointRefs.current[item.id] = el; }}
                       className="cursor-pointer transition-all duration-300"
                       onMouseEnter={() => setHoveredJoint(item.id)}
@@ -317,25 +350,32 @@ const ReportsScanner: React.FC = () => {
                         y={yStart} 
                         width="24" 
                         height={height} 
-                        fill={item.status === 'DISCREPANT' ? '#ef444444' : (isHovered ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.08)')}
-                        stroke={item.status === 'DISCREPANT' ? '#ef4444' : (isHovered ? '#ffffff' : '#10b98144')}
-                        strokeWidth={isHovered ? 2 : 1}
-                        className={`transition-all duration-300 ${isHovered ? 'filter drop-shadow-[0_0_12px_rgba(16,185,129,0.8)]' : ''}`}
+                        fill={isDiscrepant && isValidationComplete ? '#ef4444' : isDiscrepant ? '#ef444444' : (isHovered ? 'rgba(16, 185, 129, 0.4)' : 'rgba(16, 185, 129, 0.08)')}
+                        stroke={isDiscrepant ? '#ef4444' : (isHovered ? '#ffffff' : '#10b98144')}
+                        strokeWidth={isHovered || (isDiscrepant && isValidationComplete) ? 2 : 1}
+                        className={`transition-all duration-300 ${isHovered ? 'filter drop-shadow-[0_0_12px_rgba(16,185,129,0.8)]' : ''} ${isDiscrepant && isValidationComplete ? 'animate-pulse' : ''}`}
                       />
-                      {isHovered && (
+                      
+                      {(isHovered || (isDiscrepant && isValidationComplete)) && (
                         <g className="animate-in fade-in slide-in-from-left-2 duration-300">
-                          <line x1="80" y1={yStart + height/2} x2="108" y2={yStart + height/2} stroke="#ffffff" strokeWidth="1.5" strokeDasharray="3 2" />
-                          <line x1="132" y1={yStart + height/2} x2="160" y2={yStart + height/2} stroke="#ffffff" strokeWidth="1.5" strokeDasharray="3 2" />
+                          <line x1="80" y1={yStart + height/2} x2="108" y2={yStart + height/2} stroke={isDiscrepant ? '#ef4444' : '#ffffff'} strokeWidth="1.5" strokeDasharray="3 2" />
+                          <line x1="132" y1={yStart + height/2} x2="160" y2={yStart + height/2} stroke={isDiscrepant ? '#ef4444' : '#ffffff'} strokeWidth="1.5" strokeDasharray="3 2" />
                           
                           {/* Floating Detail Badge */}
-                          <rect x="165" y={yStart + height/2 - 18} width="85" height="36" rx="4" fill="rgba(2, 6, 23, 0.95)" stroke="#10b981" strokeWidth="1" className="shadow-2xl" />
-                          <text x="172" y={yStart + height/2 - 4} fill="#10b981" fontSize="9" fontWeight="black" className="uppercase">JOINT_{item.id}</text>
+                          <rect x="165" y={yStart + height/2 - 18} width="85" height="36" rx="4" fill="rgba(2, 6, 23, 0.95)" stroke={isDiscrepant ? '#ef4444' : "#10b981"} strokeWidth="1" className="shadow-2xl" />
+                          <text x="172" y={yStart + height/2 - 4} fill={isDiscrepant ? "#ef4444" : "#10b981"} fontSize="9" fontWeight="black" className="uppercase">{isDiscrepant ? 'DISCREPANT' : `JOINT_${item.id}`}</text>
                           <text x="172" y={yStart + height/2 + 8} fill="#ffffff" fontSize="8" fontWeight="bold" opacity="0.9">{item.type}</text>
-                          <text x="172" y={yStart + height/2 + 16} fill="#10b981" fontSize="7" opacity="0.6">{item.cumulative_m.toFixed(2)}m</text>
+                          <text x="172" y={yStart + height/2 + 16} fill={isDiscrepant ? "#ef4444" : "#10b981"} fontSize="7" opacity="0.6">{item.cumulative_m.toFixed(2)}m</text>
                           
                           {/* Depth Callout */}
                           <rect x="25" y={yStart + height/2 - 10} width="50" height="20" rx="2" fill="rgba(2, 6, 23, 0.8)" />
-                          <text x="70" y={yStart + height/2 + 3} fill="#10b981" fontSize="8" fontWeight="black" textAnchor="end">{item.cumulative_m.toFixed(1)}m</text>
+                          <text x="70" y={yStart + height/2 + 3} fill={isDiscrepant ? "#ef4444" : "#10b981"} fontSize="8" fontWeight="black" textAnchor="end">{item.cumulative_m.toFixed(1)}m</text>
+                        </g>
+                      )}
+
+                      {isDiscrepant && isValidationComplete && (
+                        <g transform={`translate(100, ${yStart + height/2})`} className="animate-bounce">
+                           <AlertOctagon size={16} className="text-red-500 -translate-x-1/2 -translate-y-1/2" />
                         </g>
                       )}
                     </g>
@@ -419,12 +459,12 @@ const ReportsScanner: React.FC = () => {
       )}
 
       {/* Footer Alert Bar */}
-      <div className={`p-2.5 rounded border flex flex-col sm:flex-row items-center justify-between gap-3 transition-all ${isValidationComplete ? (discordance > 0.05 ? 'bg-red-500/10 border-red-500/40' : 'bg-emerald-500/10 border-emerald-500/40') : 'bg-slate-950/80 border-emerald-900/20'}`}>
+      <div className={`p-2.5 rounded border flex flex-col sm:flex-row items-center justify-between gap-3 transition-all ${isValidationComplete ? (discordance > 0.05 || discrepantJoints.length > 0 ? 'bg-red-500/10 border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.1)]' : 'bg-emerald-500/10 border-emerald-500/40') : 'bg-slate-950/80 border-emerald-900/20'}`}>
          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
             <div className="flex items-center space-x-2">
-               {isValidationComplete ? (discordance > 0.05 ? <AlertTriangle size={14} className="text-red-500 animate-pulse" /> : <CheckCircle2 size={14} className="text-emerald-500" />) : <SearchCode size={14} className="text-emerald-900" />}
-               <span className={`text-[10px] font-black uppercase tracking-widest ${isValidationComplete ? (discordance > 0.05 ? 'text-red-400' : 'text-emerald-400') : 'text-emerald-900'}`}>
-                 {isScanning ? 'AUDIT_IN_PROGRESS' : isValidationComplete ? (discordance > 0.05 ? 'Report_Inconsistency_Flagged' : 'Tally_Schema_Verified') : 'System_Idle_Waiting_Injest'}
+               {isValidationComplete ? (discordance > 0.05 || discrepantJoints.length > 0 ? <AlertTriangle size={14} className="text-red-500 animate-pulse" /> : <CheckCircle2 size={14} className="text-emerald-500" />) : <SearchCode size={14} className="text-emerald-900" />}
+               <span className={`text-[10px] font-black uppercase tracking-widest ${isValidationComplete ? (discordance > 0.05 || discrepantJoints.length > 0 ? 'text-red-400' : 'text-emerald-400') : 'text-emerald-900'}`}>
+                 {isScanning ? 'AUDIT_IN_PROGRESS' : isValidationComplete ? (discordance > 0.05 || discrepantJoints.length > 0 ? 'Report_Inconsistency_Flagged' : 'Tally_Schema_Verified') : 'System_Idle_Waiting_Injest'}
                </span>
             </div>
             <div className="hidden sm:block h-4 w-px bg-emerald-900/30"></div>
@@ -434,6 +474,12 @@ const ReportsScanner: React.FC = () => {
             </div>
          </div>
          <div className="flex items-center space-x-4">
+            {isValidationComplete && discrepantJoints.length > 0 && (
+              <div className="flex items-center space-x-1 animate-in slide-in-from-right-2">
+                <ShieldAlert size={12} className="text-red-500" />
+                <span className="text-[8px] font-black text-red-400 uppercase">EVIDENCE_LOGGED</span>
+              </div>
+            )}
             <span className="text-[9px] text-emerald-900 font-mono tracking-tighter hidden md:inline">ENGINE: GEMINI_TALLY_SCAN_v1.2</span>
             <div className="flex items-center space-x-1">
                <div className="w-1 h-1 bg-emerald-500 rounded-full animate-ping"></div>

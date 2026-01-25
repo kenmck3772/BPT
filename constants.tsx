@@ -11,6 +11,7 @@ export const GHOST_HUNTER_MISSION: MissionConfig = {
     {
       "REGION": "NORTH_SEA",
       "ASSET": "NINIAN_CENTRAL",
+      "rig_site": "TBD_NINIAN_SITE",
       "BLOCKS": ["3/3"],
       "WELLS": ["N-42"],
       "ANOMALY_TYPE": "RIBBONS_OF_BLACK_RISK",
@@ -20,6 +21,7 @@ export const GHOST_HUNTER_MISSION: MissionConfig = {
     {
       "REGION": "NORWAY_SOVEREIGN",
       "ASSET": "STATFJORD",
+      "rig_site": "TBD_STATFJORD_SITE",
       "BLOCKS": ["33/9"],
       "ANOMALY_TYPE": "RADIOACTIVE_SAND_GHOST",
       "DATA_PORTAL": "NPD_FACTPAGES",
@@ -28,6 +30,7 @@ export const GHOST_HUNTER_MISSION: MissionConfig = {
     {
       "REGION": "NORWAY_SOVEREIGN",
       "ASSET": "GULLFAKS",
+      "rig_site": "TBD_GULLFAKS_SITE",
       "BLOCKS": ["34/10"],
       "ANOMALY_TYPE": "FAULT_SHADOW_VELOCITY",
       "DATA_PORTAL": "NPD_FACTPAGES",
@@ -36,6 +39,7 @@ export const GHOST_HUNTER_MISSION: MissionConfig = {
     {
       "REGION": "AUSTRALIA_NW_SHELF",
       "ASSET": "CARNARVON_BASIN",
+      "rig_site": "TBD_GOODWYN_SITE",
       "BLOCKS": ["WA-1-P", "WA-28-L"],
       "WELLS": ["RANKIN-12", "GOODWYN-SOUTH-3", "PERSEUS-2"],
       "ANOMALY_TYPE": "VELOCITY_PUSH_DOWN",
@@ -45,6 +49,7 @@ export const GHOST_HUNTER_MISSION: MissionConfig = {
     {
       "REGION": "AUSTRALIA",
       "ASSET": "COOPER_BASIN_TALIA",
+      "rig_site": "TBD_TALIA_SITE",
       "BLOCKS": ["ATP_2021", "PEL_106"],
       "WELLS": ["TALIA-1", "VALI-2"],
       "ANOMALY_TYPE": "GAS_GHOSTING",
@@ -63,6 +68,12 @@ export const MOCK_BASE_LOG: LogEntry[] = Array.from({ length: 100 }, (_, i) => (
 export const MOCK_GHOST_LOG: LogEntry[] = MOCK_BASE_LOG.map(entry => ({
   depth: entry.depth + 14.5, // 14.5m offset
   gr: entry.gr + (Math.random() - 0.5) * 5
+}));
+
+// Mock Elevation Data (Seabed / Topography profile)
+export const MOCK_ELEVATION_DATA = MOCK_BASE_LOG.map((entry, i) => ({
+  depth: entry.depth,
+  elevation: -450 + Math.cos(i * 0.1) * 15 + Math.random() * 2
 }));
 
 // Mock Historical Barrier Records
@@ -140,11 +151,14 @@ for (let d = 1240; d < 1250; d += 0.5) {
     let wallLoss = Math.random() * 5; 
     let waterLeakage = Math.random() * 5; 
     let stress = Math.random() * 10; 
+    let bendingStress = Math.random() * 8;
+    let hoopStress = Math.random() * 12;
     let ici = Math.random() * 20; 
     let metalLoss = Math.random() * 8;
     let ovality = Math.random() * 2;
     let uvIndex = 1 + Math.random() * 3;
 
+    // Simulate Anomaly coupling
     if (d === 1245.5 && f > 10 && f < 15) {
       deviation = 4.8;
       corrosion = 72; 
@@ -152,6 +166,8 @@ for (let d = 1240; d < 1250; d += 0.5) {
       wallLoss = 22; 
       waterLeakage = 92; 
       stress = 88; 
+      bendingStress = 95;
+      hoopStress = 98;
       ici = 95; 
       metalLoss = 28;
       ovality = 5.5;
@@ -160,7 +176,7 @@ for (let d = 1240; d < 1250; d += 0.5) {
     
     MOCK_TRAUMA_DATA.push({ 
       fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, 
-      waterLeakage, stress, ici, metalLoss, ovality, uvIndex 
+      waterLeakage, stress, bendingStress, hoopStress, ici, metalLoss, ovality, uvIndex 
     });
   }
 }

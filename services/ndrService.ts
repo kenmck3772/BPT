@@ -30,19 +30,23 @@ export async function searchNDRMetadata(
 ): Promise<NDRProject[]> {
   await new Promise(r => setTimeout(r, 1200)); // Simulate API latency
   
-  const normalizedQuery = query.toLowerCase();
+  const normalizedQuery = (query || '').toLowerCase();
   
   console.log(`NDR_METADATA_API: Crawling for ${ghostOnly ? 'DATUM_SHIFT_ANOMALIES' : 'STANDARD_PROJECTS'} status: ${status}, wellbore: ${wellboreType}, type: ${projectType}...`);
   
   return MOCK_NDR_PROJECTS.filter(p => {
+    const pId = String(p.projectId || '').toLowerCase();
+    const pQuad = String(p.quadrant || '').toLowerCase();
+    const pName = String(p.name || '').toLowerCase();
+
     const matchesQuery = !query || 
-      p.projectId.toLowerCase().includes(normalizedQuery) || 
-      p.quadrant.toLowerCase().includes(normalizedQuery) ||
-      p.name.toLowerCase().includes(normalizedQuery);
+      pId.includes(normalizedQuery) || 
+      pQuad.includes(normalizedQuery) ||
+      pName.includes(normalizedQuery);
     
-    const matchesStatus = status === 'ALL' || p.status.toUpperCase() === status.toUpperCase();
+    const matchesStatus = status === 'ALL' || String(p.status || '').toUpperCase() === status.toUpperCase();
     const matchesWellbore = wellboreType === 'ALL' || p.wellboreType === wellboreType;
-    const matchesType = projectType === 'ALL' || p.type.toLowerCase() === projectType.toLowerCase();
+    const matchesType = projectType === 'ALL' || String(p.type || '').toLowerCase() === projectType.toLowerCase();
     const matchesGhost = !ghostOnly || p.hasDatumShiftIssues === true;
     
     return matchesQuery && matchesStatus && matchesWellbore && matchesType && matchesGhost;

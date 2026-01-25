@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import { 
   BookOpen, ChevronRight, Zap, Target, Activity, 
-  Database, ShieldCheck, Ghost, Box, Terminal,
+  Database, Ghost, Box, Terminal,
   Compass, Beaker, FileText, Info, AlertTriangle,
-  Fingerprint, Cpu, Search, HardDrive
+  Fingerprint, Cpu, Search, HardDrive, ShieldCheck,
+  Microscope, Globe, Layers, Binary, Waves, SearchCode
 } from 'lucide-react';
 
 const ProtocolManual: React.FC = () => {
@@ -32,8 +33,45 @@ const ProtocolManual: React.FC = () => {
       )
     },
     { 
+      id: 'HYDRAULIC_FINGERPRINT', 
+      label: '01: Hydraulic_Fingerprinting', 
+      icon: <Waves size={16} />,
+      content: (
+        <div className="space-y-4">
+          <h3 className="text-xl font-black text-emerald-400 uppercase tracking-tighter">Acoustic Impedance Auditing</h3>
+          <p className="text-[11px] text-emerald-100/70">Detects unrecorded downhole hardware (Phantom Steel) by analyzing transient pressure reflections during wellbore shut-ins.</p>
+          <div className="p-4 bg-slate-950 border border-emerald-900/30 rounded-xl font-mono text-[10px] space-y-2">
+             <div className="text-emerald-500 font-black">Governing Equation:</div>
+             <div className="text-emerald-100 italic">P(t) = Pi + ΔP · e^(-t/τ) + Reflection(t_echo)</div>
+             <p className="text-emerald-800 border-t border-emerald-900/20 pt-2">By subtracting the theoretical decay model, we isolate the "Echo Stream." Peaks in this stream reveal the exact depth of bridge plugs, packers, or casing damage not found in the official DDR.</p>
+          </div>
+        </div>
+      )
+    },
+    { 
+      id: 'METADATA_FORENSICS', 
+      label: '02: Metadata_Forensics', 
+      icon: <SearchCode size={16} />,
+      content: (
+        <div className="space-y-4">
+          <h3 className="text-xl font-black text-emerald-400 uppercase tracking-tighter">DDR Artifact Auditing</h3>
+          <p className="text-[11px] text-emerald-100/70">Scans PDF and CSV report artifacts to identify digital manipulation, manual data "smoothing," and backfilling history.</p>
+          <div className="grid grid-cols-2 gap-4">
+             <div className="p-3 bg-slate-900 border border-emerald-900/40 rounded">
+                <span className="text-[9px] font-black text-emerald-400 uppercase">Edit Trace Analysis</span>
+                <p className="text-[10px] text-slate-400">Identifies revision counts and metadata producers (e.g. Quartz, Excel) suggesting report tampering.</p>
+             </div>
+             <div className="p-3 bg-slate-900 border border-orange-900/40 rounded">
+                <span className="text-[9px] font-black text-orange-400 uppercase">Entropy Veto</span>
+                <p className="text-[10px] text-slate-400">Flags data series with zero local variance, identifying copy-pasted "ghost" data.</p>
+             </div>
+          </div>
+        </div>
+      )
+    },
+    { 
       id: 'GHOST_SYNC', 
-      label: '01: Ghost_Sync', 
+      label: '03: Ghost_Sync', 
       icon: <Ghost size={16} />,
       content: (
         <div className="space-y-4">
@@ -42,11 +80,11 @@ const ProtocolManual: React.FC = () => {
           <ul className="space-y-2">
             <li className="flex items-start space-x-2 text-[10px]">
               <Zap size={10} className="text-emerald-500 mt-1 flex-shrink-0" />
-              <span><strong className="text-emerald-400">Auto_Lineup:</strong> Triggers a sliding window correlation to find the optimal vertical offset (typical: 14.5m).</span>
+              <span><strong className="text-emerald-400">Auto_Tie:</strong> Triggers a sliding window correlation to find the optimal vertical offset.</span>
             </li>
             <li className="flex items-start space-x-2 text-[10px]">
               <Zap size={10} className="text-emerald-500 mt-1 flex-shrink-0" />
-              <span><strong className="text-emerald-400">Differential Mode:</strong> Visualizes the delta between base and ghost traces to highlight alignment errors.</span>
+              <span><strong className="text-emerald-400">Variance_Audit:</strong> Performs a statistical signal texture scan to identify localized discordance shifts.</span>
             </li>
           </ul>
         </div>
@@ -54,7 +92,7 @@ const ProtocolManual: React.FC = () => {
     },
     { 
       id: 'TRAUMA_NODE', 
-      label: '02: Trauma_Node', 
+      label: '04: Trauma_Node', 
       icon: <Box size={16} />,
       content: (
         <div className="space-y-4">
@@ -65,50 +103,7 @@ const ProtocolManual: React.FC = () => {
                 <Target size={12} className="text-orange-500" />
                 <span className="text-[10px] font-black uppercase text-emerald-100">Visual_Bridge Instructions:</span>
              </div>
-             <p className="text-[10px] text-emerald-100/60 font-mono">1. Navigate to the Black Box Logs at the bottom.<br/>2. Click any log entry (e.g., 'CRITICAL METAL LOSS').<br/>3. The 3D Engine will auto-zoom and lock on the exact depth voxel.<br/>4. Use the Calibration Sidebar to adjust opacity of specific forensic layers.</p>
-          </div>
-          <div className="flex items-center space-x-3 text-[10px] text-orange-400 italic">
-             <Info size={14} />
-             <span>NEW: UV Index layer tracks solar radiation intensity near surface wellheads.</span>
-          </div>
-        </div>
-      )
-    },
-    { 
-      id: 'PULSE_ANALYZER', 
-      label: '03: Pulse_Analyzer', 
-      icon: <Activity size={16} />,
-      content: (
-        <div className="space-y-4">
-          <h3 className="text-xl font-black text-emerald-400 uppercase tracking-tighter">Sawtooth Pressure Scavenger</h3>
-          <p className="text-[11px] text-emerald-100/70">Analyzes annulus pressure signatures for "Sawtooth" patterns—a hallmark of sustained casing pressure.</p>
-          <div className="grid grid-cols-2 gap-4">
-             <div className="p-3 border border-emerald-900/20 bg-slate-950 rounded">
-                <span className="text-[8px] text-emerald-900 uppercase font-black">R-Squared {'>'} 0.98</span>
-                <p className="text-[10px] text-emerald-500">Linear building confirms mechanical breach.</p>
-             </div>
-             <div className="p-3 border border-emerald-900/20 bg-slate-950 rounded">
-                <span className="text-[8px] text-emerald-900 uppercase font-black">Slope {'>'} 15 PSI/U</span>
-                <p className="text-[10px] text-red-500">Critical flow rate detected.</p>
-             </div>
-          </div>
-        </div>
-      )
-    },
-    { 
-      id: 'CHANONRY', 
-      label: '04: Chanonry_Protocol', 
-      icon: <Beaker size={16} />,
-      content: (
-        <div className="space-y-4">
-          <h3 className="text-xl font-black text-emerald-400 uppercase tracking-tighter">Asphaltene Stability Logic</h3>
-          <p className="text-[11px] text-emerald-100/70">Prevents wellbore plugging by calculating colloidal instability.</p>
-          <div className="p-4 bg-red-950/20 border border-red-900/40 rounded-lg flex items-start space-x-4">
-             <AlertTriangle size={24} className="text-red-500 flex-shrink-0" />
-             <div className="space-y-1">
-                <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Ribbons of Black Warning</span>
-                <p className="text-[10px] text-red-400 font-mono">If CII {'>'} 0.9 and Treatment Fluid = ACID, the protocol will trigger a hard MECHANICAL VETO. Proceeding will result in bitumen sludge formation.</p>
-             </div>
+             <p className="text-[10px] text-emerald-100/60 font-mono">1. Navigate to the Black Box Logs.<br/>2. Click any log entry (e.g. 'CRITICAL METAL LOSS').<br/>3. The 3D Engine will auto-zoom and lock on the depth voxel.</p>
           </div>
         </div>
       )
@@ -120,15 +115,15 @@ const ProtocolManual: React.FC = () => {
       content: (
         <div className="space-y-4">
           <h3 className="text-xl font-black text-emerald-400 uppercase tracking-tighter">Architectural Insight & Audit</h3>
-          <p className="text-[11px] text-emerald-100/70">The terminal is integrated with the Brahan Forensic Architect (Gemini 3 Flash).</p>
+          <p className="text-[11px] text-emerald-100/70">The terminal is integrated with the Brahan Forensic Architect (Gemini 3 Flash) for cross-module synthesis.</p>
           <ul className="space-y-2">
             <li className="flex items-center space-x-2 text-[10px]">
               <Database size={12} className="text-emerald-500" />
-              <span>Gemini analyzes localized snapshots to provide cross-module insight.</span>
+              <span>Gemini analyzes localized snapshots to provide multi-dimensional insight.</span>
             </li>
             <li className="flex items-center space-x-2 text-[10px]">
               <FileText size={12} className="text-emerald-500" />
-              <span>"Execute Sovereign Veto" generates a secure, cryptographically hashed PDF report of all findings.</span>
+              <span>"Execute Sovereign Veto" generates a secure, cryptographically hashed PDF report.</span>
             </li>
           </ul>
         </div>
@@ -138,7 +133,6 @@ const ProtocolManual: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-slate-950/40 border border-emerald-900/20 rounded-lg overflow-hidden relative font-terminal">
-      {/* HUD Background Decorations */}
       <div className="absolute inset-0 opacity-[0.02] pointer-events-none flex items-center justify-center">
          <BookOpen size={600} className="text-emerald-500" />
       </div>
@@ -151,19 +145,14 @@ const ProtocolManual: React.FC = () => {
           <div>
             <h2 className="text-2xl font-black text-emerald-400 uppercase tracking-tighter">Forensic_Protocol_Manual</h2>
             <div className="flex items-center space-x-2">
-               <span className="text-[9px] text-emerald-800 uppercase tracking-[0.4em] font-black">Authorized_Instructions // v2.5.0</span>
+               <span className="text-[9px] text-emerald-800 uppercase tracking-[0.4em] font-black">Authorized_Instructions // v2.6.0</span>
                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]"></div>
             </div>
           </div>
         </div>
-        <div className="text-right">
-           <span className="text-[10px] text-emerald-700 font-mono block tracking-widest uppercase">Encryption: RSA-4096</span>
-           <span className="text-[8px] text-emerald-950 uppercase font-black">Ref_Node: SEER_GUIDE</span>
-        </div>
       </header>
 
       <div className="flex-1 flex min-h-0 relative z-10">
-        {/* Navigation Sidebar */}
         <div className="w-72 border-r border-emerald-900/20 flex flex-col bg-slate-950/40">
            <div className="p-4 border-b border-emerald-900/20">
               <div className="flex items-center space-x-2 text-[9px] font-black text-emerald-900 uppercase tracking-widest">
@@ -186,16 +175,8 @@ const ProtocolManual: React.FC = () => {
                 </button>
               ))}
            </div>
-           <div className="p-4 bg-black/40 border-t border-emerald-900/20">
-              <div className="flex items-center space-x-2 mb-2">
-                 <HardDrive size={12} className="text-emerald-900" />
-                 <span className="text-[8px] font-black text-emerald-950 uppercase">Knowledge_Base</span>
-              </div>
-              <div className="text-[9px] text-emerald-800 italic leading-tight">Terminal instructions cached locally for disconnected forensic analysis.</div>
-           </div>
         </div>
 
-        {/* Content Viewer */}
         <div className="flex-1 flex flex-col min-w-0 bg-slate-900/20 overflow-hidden">
            <div className="flex-1 overflow-y-auto p-8 lg:p-12 custom-scrollbar">
               <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -205,7 +186,6 @@ const ProtocolManual: React.FC = () => {
                  </div>
                  
                  <div className="bg-slate-950/60 border border-emerald-900/30 rounded-2xl p-8 lg:p-10 shadow-2xl relative overflow-hidden backdrop-blur-md">
-                    {/* Visual Vibe */}
                     <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
                        {topics.find(t => t.id === activeTopic)?.icon}
                     </div>
@@ -214,7 +194,6 @@ const ProtocolManual: React.FC = () => {
 
                  <div className="mt-12 pt-8 border-t border-emerald-900/20 flex items-center justify-between text-[10px] font-black text-emerald-900 uppercase">
                     <span className="flex items-center space-x-2"><Cpu size={14} /> <span>Logic: Brahan_Core_v2</span></span>
-                    <span className="flex items-center space-x-2 hover:text-emerald-400 transition-colors cursor-pointer"><span>Download Technical Specs</span> <FileText size={14} /></span>
                  </div>
               </div>
            </div>
