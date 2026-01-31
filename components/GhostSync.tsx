@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useGhostSync } from '../hooks/useGhostSync';
 import GhostSyncRemotePanel from './GhostSyncRemotePanel';
 import GhostSyncAnomalyList from './GhostSyncAnomalyList';
@@ -8,425 +7,693 @@ import GhostSyncSignalRegistry from './GhostSyncSignalRegistry';
 import GhostSyncHeader from './GhostSyncHeader';
 import GhostSyncStats from './GhostSyncStats';
 import GhostSyncChartContainer from './GhostSyncChartContainer';
-import { Shield, MoveVertical, ChevronUp, ChevronDown, Target, Zap, Activity, SlidersHorizontal, Fingerprint, Filter, Search, Loader2, Microscope, Layers, Globe, RotateCw, Lock } from 'lucide-react';
+// Add missing import for DataIntegrityLegend
+import DataIntegrityLegend from './DataIntegrityLegend';
+import { 
+  Shield, MoveVertical, ChevronUp, ChevronDown, Target, Zap, 
+  Activity, SlidersHorizontal, Fingerprint, Filter, Search, 
+  Loader2, Microscope, Layers, Globe, RotateCw, Lock, 
+  CloudDownload, Link as LinkIcon, Database, Info,
+  Command, ChevronRight, Ruler, Mountain, Eye as FocusEye, EyeOff, Play,
+  FileSearch, Cpu, ToggleLeft, ToggleRight, Radio, CloudUpload,
+  Map, FileCode, CheckCircle2, ShieldCheck, Building, ClipboardList,
+  Save, RotateCcw, Clock, HardDrive, X, Crosshair, AlertCircle,
+  Maximize2, Minimize2, Trash2, Terminal as TerminalIcon,
+  MapPin, Calendar, FileType, AlertOctagon, Hash, Layout,
+  ExternalLink, Download, SearchCode, Skull, Scale, ShieldAlert, AlertTriangle, TrendingUp
+} from 'lucide-react';
 import * as htmlToImage from 'html-to-image';
+import { searchNDRMetadata } from '../services/ndrService';
+import { NDRProject } from '../types';
+import { secureAsset } from '../services/vaultService';
+import { GHOST_HUNTER_MISSION } from '../constants';
 
-const GhostSync: React.FC = () => {
+interface GhostSyncProps {
+  isFocused?: boolean;
+  onToggleFocus?: () => void;
+}
+
+const COMMAND_REGISTRY = [
+  { cmd: 'audit', desc: 'Execute depth discordance scan' },
+  { cmd: 'fetch', desc: 'Establish remote NDR artifact link' },
+  { cmd: 'clear', desc: 'Purge console log buffer' },
+  { cmd: 'expand', desc: 'Toggle full-screen console mode' },
+  { cmd: 'help', desc: 'Display available forensic procedures' },
+  { cmd: 'save', desc: 'Commit session state to vault' },
+  { cmd: 'veto', desc: 'Run variance-based decommissioning audit' },
+  { cmd: 'scripts/real_las_audit.py', desc: 'Invoke LAS voxel extraction kernel' }
+];
+
+const GhostSync: React.FC<GhostSyncProps> = ({ isFocused, onToggleFocus }) => {
+  const [currentWellData, setCurrentWellData] = useState<NDRProject | null>(null);
+  const [isWellInfoExpanded, setIsWellInfoExpanded] = useState(false);
+  const [isLoadingWellData, setIsLoadingWellData] = useState(false);
+
+  // Added wellId dependency to useGhostSync to support context switching
   const {
-    offset, isSyncing, isSweeping, viewMode, setViewMode, validationError,
-    autoDetectEnabled, setAutoDetectEnabled,
+    offset, stableOffset, isSyncing, isSweeping, viewMode, setViewMode, validationError,
     showAnomalies, setShowAnomalies, anomalyThreshold, setAnomalyThreshold,
-    microSensitivity, setMicroSensitivity, varianceWindow, setVarianceWindow,
-    isScanningAnomalies, isAutoAuditing, isAuditingVariance, detectedAnomalies, filteredAnomalies, severityFilter, setSeverityFilter, combinedData, correlationScore,
+    microSensitivity, setMicroSensitivity, effectiveThreshold, varianceWindow, setVarianceWindow,
+    isScanningAnomalies, isAutoAuditing, isAuditingVariance, isExtracting, isElevationLoaded, lastSaved, filteredAnomalies, combinedData, correlationScore,
     signals, driftRiskScore, sigmaScore, handleOffsetChange, detectOptimalShift, 
-    runAnomalyScan, runVarianceAudit, toggleSignalVisibility, updateSignalColor, reorderSignals, 
-    addRemoteSignal, addManualSignal, removeSignal
-  } = useGhostSync();
+    runAnomalyScan, runVarianceAudit, handleForensicExtraction, toggleSignalVisibility, updateSignalColor, reorderSignals, 
+    addRemoteSignal, addManualSignal, removeSignal, fetchElevationData,
+    zoomRange, setZoomRange, activeAnomalyId, setActiveAnomalyId, saveSession,
+    // Destructuring missing deep audit props from hook to resolve reference errors
+    auditTargetAnomaly, isAuditingDeep, deepAuditReport, runDeepAnomalyAudit, closeDeepAudit
+  } = useGhostSync(currentWellData?.projectId);
 
   const [isRemoteInputVisible, setIsRemoteInputVisible] = useState(false);
+  const [remoteFetchUrl, setRemoteFetchUrl] = useState('');
   const [showEthicsBrief, setShowEthicsBrief] = useState(false);
-  const [activeAnomalyId, setActiveAnomalyId] = useState<string | null>(null);
-  const [showSyncSuccess, setShowSyncSuccess] = useState(false);
-  const captureRef = useRef<HTMLDivElement>(null);
+  const [signalSearchQuery, setSignalSearchQuery] = useState('');
+  const [isScrapingElevation] = useState(false);
+  const [isSecuringAudit, setIsSecuringAudit] = useState(false);
+  
+  const [localSliderOffset, setLocalSliderOffset] = useState(offset);
 
-  // Local state for smooth slider tracking before debounced propagation
-  const [localOffset, setLocalOffset] = useState(offset);
+  // Added autocomplete state for CLI
+  const [suggestions, setSuggestions] = useState<typeof COMMAND_REGISTRY>([]);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
 
-  // Sync local offset with global offset (e.g. after Auto_Tie)
+  // Detect peak discordance in API units for triggering alerts
+  const maxDiscordance = useMemo(() => {
+    return Math.max(...combinedData.map(d => d.diff || 0), 0);
+  }, [combinedData]);
+
+  const hasDiscordanceAlert = maxDiscordance > 10;
+
+  // Extract active rig site from GHOST_HUNTER_MISSION based on target context
+  const activeRigSite = useMemo(() => {
+    if (!currentWellData) return null;
+    const target = GHOST_HUNTER_MISSION.TARGETS.find(t => 
+      currentWellData.name.toUpperCase().includes(t.ASSET.replace('_', ' ').toUpperCase()) ||
+      currentWellData.projectId.toUpperCase().includes(t.ASSET.toUpperCase())
+    );
+    return target?.rig_site || null;
+  }, [currentWellData]);
+
+  // CLI Console State
+  const [cliInput, setCliInput] = useState('');
+  const [cliLogs, setCliLogs] = useState<{msg: string, type: 'PROC' | 'REMOTE' | 'ERR' | 'SUCCESS' | 'INPUT' | 'INFO'}[]>([]);
+  const [isCliProcessing, setIsCliProcessing] = useState(false);
+  const [isTerminalExpanded, setIsTerminalExpanded] = useState(false);
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const cliScrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filteredSignalsList = useMemo(() => {
+    const query = String(signalSearchQuery || '').trim().toLowerCase();
+    if (!query) return signals || [];
+    return (signals || []).filter(s => {
+      if (!s) return false;
+      const name = String(s.name || '').toLowerCase();
+      const id = String(s.id || '').toLowerCase();
+      return (name && name.includes(query)) || (id && id.includes(query));
+    });
+  }, [signals, signalSearchQuery]);
+
   useEffect(() => {
-    setLocalOffset(offset);
-  }, [offset]);
-
-  // Debounced propagation of local offset to global state
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      if (localOffset !== offset) {
-        handleOffsetChange(localOffset);
+    const fetchWellContext = async () => {
+      setIsLoadingWellData(true);
+      try {
+        const results = await searchNDRMetadata('Ninian');
+        if (results && results.length > 0) {
+           setCurrentWellData(results[0]);
+           addCliLogWithType(`>>> REGISTRY_UPLINK: Found project ${results[0].projectId}.`, 'SUCCESS');
+        }
+      } catch (err) {
+        console.error("GHOST_SYNC_ERROR: Failed to fetch NDR well context registry:", err);
+        addCliLogWithType("ERR: REGISTRY_CRAWL_FAILED", 'ERR');
+      } finally {
+        setIsLoadingWellData(false);
       }
-    }, 50); // 50ms offers a balance between UI snappiness and calculation throttling
-    return () => clearTimeout(handler);
-  }, [localOffset, handleOffsetChange, offset]);
+    };
+    fetchWellContext();
 
-  // Generate a unique session ID for the duration of this module's mount
-  const sessionId = useMemo(() => {
-    return `BRAHAN-SEC-SES-${Math.random().toString(36).substring(2, 15)}-${Date.now().toString(36)}`;
+    if (lastSaved) {
+       addCliLogWithType(`>>> SESSION_RESTORED: Previous kernel state re-anchored. Offset: ${offset.toFixed(3)}m.`, 'SUCCESS');
+    }
   }, []);
 
-  // Automatic Trigger: React to data or offset changes for background forensics
   useEffect(() => {
-    if (autoDetectEnabled && !isSyncing && !isSweeping) {
-      const debounceTimer = setTimeout(() => {
-        runAnomalyScan(true);
-      }, 400);
-      return () => clearTimeout(debounceTimer);
-    }
-  }, [offset, combinedData, autoDetectEnabled, isSyncing, isSweeping, runAnomalyScan]);
+    setLocalSliderOffset(offset);
+  }, [offset]);
 
-  // Visual success indicator for Auto_Tie
   useEffect(() => {
-    if (isSyncing) {
-      setShowSyncSuccess(false);
-    } else if (Math.abs(offset) > 0 && !isSyncing && !isSweeping) {
-       // Only show if it was actually just synced (simplified check)
-       setShowSyncSuccess(true);
-       const timer = setTimeout(() => setShowSyncSuccess(false), 3000);
-       return () => clearTimeout(timer);
-    }
-  }, [isSyncing, isSweeping]);
+    if (localSliderOffset === offset) return;
+    const debouncedCommit = setTimeout(() => {
+      handleOffsetChange(localSliderOffset);
+    }, 350);
+    return () => clearTimeout(debouncedCommit);
+  }, [localSliderOffset, handleOffsetChange, offset]);
 
-  const handleExportCSV = () => {
-    const headers = ["Depth(m)", "Base_Log_GR(API)", "Ghost_Log_GR(API)", "Discordance_Delta(API)", "Sigma_Scoring"];
-    const csvRows = combinedData.map(row => 
-      [row.depth, row.baseGR, row.ghostGR ?? "N/A", row.diff, sigmaScore].join(",")
-    );
-    
-    const csvContent = [headers.join(","), ...csvRows].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `BRAHAN_SIGMA_${sigmaScore}_OFFSET_${offset.toFixed(3)}M.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  useEffect(() => {
+    if (cliScrollRef.current) {
+      cliScrollRef.current.scrollTop = cliScrollRef.current.scrollHeight;
+    }
+  }, [cliLogs]);
+
+  const addCliLogWithType = (msg: string, type: 'PROC' | 'REMOTE' | 'ERR' | 'SUCCESS' | 'INPUT' | 'INFO' = 'PROC') => {
+    setCliLogs(prev => [...prev.slice(-99), { msg: msg || "", type }]);
   };
 
-  const handleExportPNG = async () => {
-    if (!captureRef.current) return;
+  const validateUrl = (url: string) => {
     try {
-      const dataUrl = await htmlToImage.toPng(captureRef.current, {
-        backgroundColor: '#020617',
-        quality: 1,
-        pixelRatio: 2,
-      });
-      const link = document.createElement('a');
-      link.download = `BRAHAN_FORENSIC_SNAPSHOT_${sigmaScore}SIGMA_${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
-    } catch (err) {
-      console.error('Snapshot failure:', err);
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:';
+    } catch (e) {
+      return false;
     }
   };
 
-  const ghostLabel = Math.abs(offset) > 0.05 ? (isSweeping ? "SWEEPING..." : "CALIBRATED_LOG") : "GHOST_LOG";
+  const streamLogs = async (lines: {msg: string, type: any}[]) => {
+    for (const line of lines) {
+      if (!line) continue;
+      const msg = line.msg || "";
+      addCliLogWithType(msg, line.type);
+      const delay = (msg && msg.includes('...')) ? 600 : (Math.random() * 150 + 40);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  };
+
+  const executeCommand = async (cmd: string) => {
+    const trimmedCmd = String(cmd || '').trim();
+    if (!trimmedCmd) return;
+
+    addCliLogWithType(`brahan@seer:~$ ${trimmedCmd}`, 'INPUT');
+    setIsCliProcessing(true);
+    setSuggestions([]);
+
+    try {
+      if (trimmedCmd.includes('scripts/real_las_audit.py')) {
+        const filePath = 'Data/Ninian/NC12/3_03-N12_jwl_JWL_FILE_266223720.las';
+        await streamLogs([
+          { msg: ">>> INITIATING_FORENSIC_AUDIT_KERNEL...", type: 'INFO' },
+          { msg: `>>> TARGET_ARTIFACT: ${filePath.split('/').pop()}`, type: 'PROC' },
+          { msg: ">>> DECODING_LAS_V3_VOXELS...", type: 'PROC' },
+          { msg: ">>> FILTER_APPLIED: [GR, CALI]", type: 'SUCCESS' }
+        ]);
+        
+        await handleForensicExtraction(filePath, ['GR', 'CALI']);
+        
+        addCliLogWithType(">>> SUCCESS: CURVES_INGESTED_TO_REGISTRY", 'SUCCESS');
+        addCliLogWithType(">>> COMMITTING_FORENSIC_CSV_TO_VAULT...", 'INFO');
+      }
+      else if (trimmedCmd.startsWith('fetch')) {
+        const urlCandidate = trimmedCmd.replace('fetch ', '').trim();
+        if (validateUrl(urlCandidate)) {
+           await streamLogs([
+             { msg: ">>> VALIDATING_REMOTE_URI...", type: 'INFO' },
+             { msg: `>>> TARGET_LOCKED: ${new URL(urlCandidate).hostname}`, type: 'SUCCESS' },
+             { msg: ">>> INITIALIZING_UPLINK_PANEL...", type: 'PROC' }
+           ]);
+           setRemoteFetchUrl(urlCandidate);
+           setIsRemoteInputVisible(true);
+        } else if (!urlCandidate || urlCandidate === 'fetch') {
+           setIsRemoteInputVisible(true);
+        } else {
+           addCliLogWithType("ERR: INVALID_OR_INSECURE_URI (HTTPS_REQUIRED)", 'ERR');
+        }
+      }
+      else if (trimmedCmd.startsWith('search ')) {
+        const wellQuery = trimmedCmd.replace('search ', '').trim();
+        setIsLoadingWellData(true);
+        const results = await searchNDRMetadata(wellQuery);
+        if (results && results.length > 0) {
+           setCurrentWellData(results[0]);
+           addCliLogWithType(`>>> REGISTRY_UPLINK: Switched context to ${results[0].name}.`, 'SUCCESS');
+        } else {
+           addCliLogWithType(`ERR: NO_REGISTRY_MATCH_FOR '${wellQuery}'`, 'ERR');
+        }
+        setIsLoadingWellData(false);
+      }
+      else if (trimmedCmd === 'expand') {
+        setIsTerminalExpanded(!isTerminalExpanded);
+        addCliLogWithType("CONSOLE_MODE_UPDATED", 'SUCCESS');
+      }
+      else if (trimmedCmd === 'clear') {
+        setCliLogs([]);
+      } 
+      else if (trimmedCmd === 'help') {
+        await streamLogs([
+          { msg: ">>> AVAILABLE_FORENSIC_PROCEDURES:", type: 'INFO' },
+          ...COMMAND_REGISTRY.map(c => ({ msg: `${c.cmd.padEnd(25)} - ${c.desc}`, type: 'PROC' })),
+          { msg: "search [well]               - Re-anchor kernel context to target well", type: 'PROC' }
+        ]);
+      }
+      else if (trimmedCmd === 'save') {
+        handleSaveSessionWithLog();
+      }
+      else if (trimmedCmd.startsWith('audit')) {
+         runAnomalyScan();
+      }
+      else if (trimmedCmd.startsWith('veto')) {
+        runVarianceAudit(varianceWindow);
+      }
+      else {
+        addCliLogWithType(`ERR: COMMAND_NOT_RECOGNIZED: '${trimmedCmd}'`, 'ERR');
+      }
+    } catch (globalErr) {
+      addCliLogWithType(`CRITICAL: KERNEL_PANIC_DURING_COMMAND_EXECUTION`, 'ERR');
+    } finally {
+      setIsCliProcessing(false);
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setCliInput(val);
+    if (val.trim()) {
+      const matches = COMMAND_REGISTRY.filter(c => c.cmd.startsWith(val.toLowerCase().trim()));
+      setSuggestions(matches);
+      setSuggestionIndex(0);
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggestionIndex(prev => (prev + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggestionIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        setCliInput(suggestions[suggestionIndex].cmd);
+        setSuggestions([]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setSuggestions([]);
+        return;
+      }
+    }
+    if (e.key === 'Enter') {
+      executeCommand(cliInput);
+      if (cliInput.trim()) {
+        setCommandHistory(prev => [cliInput, ...prev.slice(0, 19)]);
+      }
+      setCliInput('');
+      setHistoryIndex(-1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const nextIndex = historyIndex + 1;
+      if (nextIndex < commandHistory.length) {
+        setHistoryIndex(nextIndex);
+        setCliInput(commandHistory[nextIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = historyIndex - 1;
+      if (nextIndex >= 0) {
+        setHistoryIndex(nextIndex);
+        setCliInput(commandHistory[nextIndex]);
+      } else {
+        setHistoryIndex(-1);
+        setCliInput('');
+      }
+    }
+  };
+
+  const handleSaveSessionWithLog = () => {
+    saveSession();
+    addCliLogWithType("SESSION_COMMIT: State persisted to local vault buffer.", 'SUCCESS');
+  };
+
+  const handleSecureDeepAudit = () => {
+    if (!deepAuditReport || !auditTargetAnomaly) return;
+    setIsSecuringAudit(true);
+    setTimeout(() => {
+      const mappedStatus: 'VERIFIED' | 'PENDING' | 'CRITICAL' = auditTargetAnomaly.severity === 'CRITICAL' ? 'CRITICAL' : (auditTargetAnomaly.severity === 'WARNING' ? 'PENDING' : 'VERIFIED');
+      
+      secureAsset({
+        title: `Anomaly_Deep_Audit: ${auditTargetAnomaly.id}`,
+        status: mappedStatus,
+        summary: deepAuditReport.technicalDeduction,
+        region: 'North Sea (Ninian Hub)',
+        valueEst: auditTargetAnomaly.severity === 'CRITICAL' ? 12000000 : 850000,
+        confidence: auditTargetAnomaly.sigmaScore * 16.6 
+      });
+      setIsSecuringAudit(false);
+      closeDeepAudit();
+    }, 1200);
+  };
 
   return (
-    <div ref={captureRef} className="flex flex-col h-full p-4 space-y-4 font-terminal bg-slate-950/20 relative">
-      
-      {/* Auto_Tie Success Overlay */}
-      {showSyncSuccess && !isSyncing && !isSweeping && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[60] animate-in fade-in zoom-in-95 duration-500 pointer-events-none">
-          <div className="bg-emerald-500/90 border-2 border-emerald-400 px-6 py-3 rounded-full flex items-center gap-3 shadow-[0_0_40px_rgba(16,185,129,0.5)] backdrop-blur-md">
-            <Lock size={20} className="text-slate-950 animate-bounce" />
-            <div className="flex flex-col">
-              <span className="text-xs font-black text-slate-950 uppercase tracking-[0.2em]">Sync_Lock_Acquired</span>
-              <span className="text-[10px] font-bold text-slate-900/80 uppercase">Optimal Tie: {offset.toFixed(3)}m</span>
-            </div>
-          </div>
+    <div className="flex flex-col h-full p-4 space-y-4 font-terminal bg-slate-950/20 relative overflow-hidden">
+      {(auditTargetAnomaly || isAuditingDeep) && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-8 bg-black/95 backdrop-blur-3xl animate-in fade-in duration-300">
+           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#10b981 0.5px, transparent 0.5px)', backgroundSize: '30px 30px' }}></div>
+           
+           <div className="w-full max-w-5xl bg-slate-900 border-2 border-emerald-500/40 rounded-[2.5rem] shadow-[0_0_150px_rgba(16,185,129,0.3)] overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-500">
+              <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none">
+                 <span className="text-[12rem] font-black uppercase -rotate-12 border-8 border-emerald-500 p-10 leading-none">CONFIDENTIAL_VETO</span>
+              </div>
+
+              <div className="p-8 border-b border-emerald-500/20 bg-slate-950/80 flex items-center justify-between relative z-10">
+                 <div className="flex items-center gap-6">
+                    <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/40 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+                       <SearchCode size={32} className="text-emerald-400" />
+                    </div>
+                    <div>
+                       <h2 className="text-3xl font-black text-emerald-100 uppercase tracking-tighter leading-none">
+                         Forensic_Deep_Audit: {auditTargetAnomaly?.id || 'SYNTHESIZING...'}
+                       </h2>
+                       <div className="flex items-center gap-3 mt-2">
+                          <span className="text-[10px] text-emerald-900 font-bold uppercase tracking-[0.4em]">Subsurface Discordance Briefing</span>
+                          <div className="h-1 w-1 rounded-full bg-emerald-900"></div>
+                          <span className="text-[10px] text-emerald-500 font-mono">Auth: Quintin_Milne // SC876023</span>
+                       </div>
+                    </div>
+                 </div>
+                 <button onClick={closeDeepAudit} aria-label="Close Audit Modal" className="p-3 text-emerald-900 hover:text-red-500 transition-all hover:scale-110 active:scale-95">
+                    <X size={40} />
+                 </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-black/40 relative z-10">
+                 {isAuditingDeep ? (
+                    <div className="h-full flex flex-col items-center justify-center space-y-8 py-20">
+                       <div className="relative">
+                          <Loader2 size={160} className="text-emerald-500 animate-spin opacity-20" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                             <Cpu size={60} className="text-emerald-500 animate-pulse" />
+                          </div>
+                       </div>
+                       <div className="flex flex-col items-center gap-4 text-center">
+                          <span className="text-2xl font-black text-emerald-400 uppercase tracking-[0.6em] animate-pulse">Sovereign_Logic_Synthesis</span>
+                          <div className="flex items-center gap-2 text-[11px] font-mono text-emerald-900 uppercase">
+                             <Zap size={14} className="animate-bounce" />
+                             <span>Bypassing metadata abyss... accessing author's truth from 1994 archival ink...</span>
+                          </div>
+                       </div>
+                    </div>
+                 ) : deepAuditReport ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 animate-in slide-in-from-bottom-6 duration-700">
+                       <div className="lg:col-span-7 space-y-10">
+                          <div className="space-y-4">
+                             <div className="flex items-center gap-3 text-emerald-500 font-black text-xs uppercase tracking-widest border-b border-emerald-900/30 pb-2">
+                                <Activity size={20} /> <span>I. Anomaly_Signature_&_Nature</span>
+                             </div>
+                             <div className="relative">
+                                <div className="absolute -left-6 top-0 bottom-0 w-1 bg-emerald-500/30 rounded-full"></div>
+                                <p className="text-[17px] text-emerald-100 leading-relaxed font-mono italic bg-emerald-500/5 p-6 rounded-r-2xl border border-emerald-500/10 shadow-inner">
+                                   "{deepAuditReport.nature}"
+                                </p>
+                             </div>
+                          </div>
+
+                          <div className="space-y-4">
+                             <div className="flex items-center gap-3 text-orange-500 font-black text-xs uppercase tracking-widest border-b border-orange-900/30 pb-2">
+                                <AlertTriangle size={20} /> <span>II. Probable_Root_Causes</span>
+                             </div>
+                             <div className="grid grid-cols-1 gap-4">
+                                {deepAuditReport.potentialCauses.map((cause, i) => (
+                                   <div key={i} className="p-5 bg-slate-900/80 border border-orange-900/20 rounded-[1.25rem] flex items-center gap-5 group hover:border-orange-500 hover:bg-slate-900 transition-all cursor-default shadow-lg">
+                                      <div className="w-10 h-10 rounded-full bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-xs font-black text-orange-500 group-hover:scale-110 transition-transform">0{i+1}</div>
+                                      <span className="text-[13px] text-orange-100 uppercase tracking-tighter leading-tight font-bold">{cause}</span>
+                                   </div>
+                                ))}
+                             </div>
+                          </div>
+
+                          <div className="p-6 bg-blue-900/10 border border-blue-900/30 rounded-3xl space-y-3 shadow-2xl">
+                             <div className="flex items-center gap-3 text-blue-400 font-black text-xs uppercase tracking-widest">
+                                <Scale size={20} /> <span>III. Regulatory_Compliance_Veto</span>
+                             </div>
+                             <p className="text-[12px] text-blue-100/90 font-mono leading-relaxed bg-black/40 p-4 rounded-xl border border-blue-500/20">
+                                {deepAuditReport.regulatoryConstraint}
+                             </p>
+                          </div>
+                       </div>
+
+                       <div className="lg:col-span-5 space-y-10">
+                          <div className="p-8 bg-red-600/15 border-l-8 border-red-600 rounded-r-3xl space-y-6 shadow-[0_0_50px_rgba(220,38,38,0.2)] relative overflow-hidden group hover:bg-red-600/20 transition-all">
+                             <div className="absolute -top-4 -right-4 p-4 opacity-[0.03] group-hover:opacity-10 pointer-events-none transition-opacity duration-500"><ShieldAlert size={160} /></div>
+                             <div className="flex items-center gap-3 text-red-500 font-black text-xs uppercase tracking-[0.4em]">
+                                <Scale size={20} /> <span>Sovereign_Remediation</span>
+                             </div>
+                             <p className="text-[19px] font-black text-red-500 leading-tight uppercase tracking-tighter drop-shadow-sm">
+                                {deepAuditReport.remediation}
+                             </p>
+                             <div className="pt-4 border-t border-red-600/20">
+                                <span className="text-[9px] font-black text-red-900 uppercase tracking-widest block mb-1">Fiscal_Risk_Exposure</span>
+                                <span className="text-2xl font-black text-white tracking-tighter">£8.5M - £12.0M UNMANAGED</span>
+                             </div>
+                          </div>
+
+                          <div className="space-y-4">
+                             <div className="flex items-center gap-3 text-blue-400 font-black text-xs uppercase tracking-widest border-b border-blue-900/30 pb-2">
+                                <Database size={20} /> <span>IV. Final_Deduction_Briefing</span>
+                             </div>
+                             <div className="p-6 bg-blue-900/5 border border-blue-900/20 rounded-3xl shadow-inner">
+                                <p className="text-[13px] text-blue-100/80 leading-relaxed font-mono italic">
+                                   "{deepAuditReport.technicalDeduction}"
+                                </p>
+                             </div>
+                          </div>
+
+                          <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-3xl space-y-3 shadow-xl hover:shadow-emerald-500/10 transition-shadow">
+                             <div className="flex justify-between items-center">
+                                <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">MER_UK_STAF_IMPACT</span>
+                                <TrendingUp size={16} className="text-emerald-500" />
+                             </div>
+                             <p className="text-[14px] font-black text-emerald-400 uppercase tracking-tight leading-tight">{deepAuditReport.merUkImpact}</p>
+                          </div>
+                       </div>
+                    </div>
+                 ) : (
+                    <div className="flex flex-col items-center justify-center space-y-6 opacity-10 h-full py-40">
+                       <Skull size={180} />
+                       <span className="text-2xl font-black uppercase tracking-[1em]">Registry_Void</span>
+                    </div>
+                 )}
+              </div>
+
+              <div className="p-8 border-t border-emerald-500/20 bg-slate-950 flex items-center justify-between relative z-10">
+                 <div className="flex items-center gap-10">
+                    <div className="flex flex-col gap-1">
+                       <span className="text-[8px] font-black text-emerald-900 uppercase tracking-widest">Audit_Status</span>
+                       <div className="flex items-center gap-2 text-[10px] font-black text-emerald-100 uppercase">
+                          <Target size={14} className="text-emerald-500 animate-pulse" /> Authors_Truth_Enabled
+                       </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                       <span className="text-[8px] font-black text-emerald-900 uppercase tracking-widest">Compliance_Enforcement</span>
+                       <div className="flex items-center gap-2 text-[10px] font-black text-emerald-100 uppercase">
+                          <ShieldCheck size={14} className="text-emerald-500" /> Art_14_HITL_Verified
+                       </div>
+                    </div>
+                 </div>
+                 <div className="flex items-center gap-5">
+                    <button onClick={closeDeepAudit} className="px-8 py-3.5 rounded-2xl border border-emerald-900/60 text-emerald-700 font-black uppercase text-xs tracking-widest hover:text-emerald-400 hover:border-emerald-500 transition-all active:scale-95">Dismiss_Audit</button>
+                    <button 
+                      onClick={handleSecureDeepAudit}
+                      disabled={!deepAuditReport || isSecuringAudit}
+                      className={`px-12 py-4 rounded-2xl bg-emerald-500 text-slate-950 font-black uppercase text-xs tracking-[0.4em] shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all flex items-center justify-center gap-4 ${isSecuringAudit ? 'opacity-50 cursor-wait' : 'hover:bg-emerald-400 hover:scale-105 active:scale-95'}`}
+                    >
+                       {isSecuringAudit ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                       <span>{isSecuringAudit ? 'SECURING_VAULT...' : 'Issue_Sovereign_Veto'}</span>
+                    </button>
+                 </div>
+              </div>
+           </div>
         </div>
       )}
 
-      <GhostSyncHeader 
-        isSweeping={isSweeping}
-        showEthicsBrief={showEthicsBrief}
-        onToggleEthics={() => setShowEthicsBrief(!showEthicsBrief)}
-        isRemoteInputVisible={isRemoteInputVisible}
-        onToggleRemote={() => setIsRemoteInputVisible(!isRemoteInputVisible)}
-        onExport={handleExportCSV}
-        onExportPNG={handleExportPNG}
-        isScanningAnomalies={isScanningAnomalies}
-        isAuditingVariance={isAuditingVariance}
-        isSyncing={isSyncing}
-        onRunAnomalyScan={runAnomalyScan}
-        onRunVarianceAudit={runVarianceAudit}
-        onDetectOptimalShift={detectOptimalShift}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-      />
-
-      {showEthicsBrief && (
-        <div className="bg-red-950/20 border-l-4 border-red-500 p-4 rounded animate-in slide-in-from-left-2 duration-300 shadow-[0_0_20px_rgba(239,68,68,0.1)]">
-           <h4 className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-             <Shield size={14} /> Brahan Sigma (σ) Calibration
-           </h4>
-           <p className="text-[11px] text-red-200/70 font-terminal italic leading-relaxed">
-             Standard percentages are for public compliance. Forensic hunting requires the Sigma Protocol: 
-             [3σ-4σ] Strong Lead; [4σ-5σ] Verified Target; [>5σ] Sovereign Discovery.
-           </p>
-        </div>
-      )}
-
-      {/* Forensic Modal for Remote Data Ingestion */}
-      {isRemoteInputVisible && (
-        <GhostSyncRemotePanel 
-          sessionId={sessionId}
-          onClose={() => setIsRemoteInputVisible(false)}
-          onDataLoaded={(id, name, data) => {
-            addRemoteSignal(id, name, '#3b82f6', data);
-            setIsRemoteInputVisible(false);
-          }} 
-        />
-      )}
-
-      <div className="flex-1 flex flex-col xl:flex-row gap-4 min-h-0">
-        <div className="flex-1 flex flex-col space-y-4">
-           <GhostSyncChartContainer 
-             viewMode={viewMode}
-             combinedData={combinedData}
-             signals={signals}
-             ghostLabel={ghostLabel}
-             validationError={validationError}
-             offset={offset}
-             showAnomalies={showAnomalies}
-             detectedAnomalies={filteredAnomalies}
-             anomalyThreshold={anomalyThreshold}
-             activeAnomalyId={activeAnomalyId}
-             varianceWindow={varianceWindow}
-             isAuditingVariance={isAuditingVariance}
-           />
-           <GhostSyncStats 
-             sigmaScore={sigmaScore}
-             driftRiskScore={driftRiskScore}
-             correlationScore={correlationScore}
-             anomaliesCount={filteredAnomalies.length}
-           />
-        </div>
-
-        <div className="w-full xl:w-80 flex flex-col space-y-4">
-          {/* Tactical Precision Offset Controller */}
-          <div className="bg-slate-950/90 border border-emerald-500/30 rounded-2xl p-5 shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none group-hover:opacity-20 transition-opacity">
-              <MoveVertical size={120} className="text-emerald-500" />
+      <div className="flex flex-col space-y-3 z-50">
+        <div className="flex items-center justify-between bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-4 shadow-2xl backdrop-blur-xl relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+          
+          <div className="flex items-center gap-6 relative z-10">
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/40 rounded-xl shadow-lg group-hover:shadow-emerald-500/20 transition-all duration-500">
+               <Building size={24} className="text-emerald-400" />
             </div>
             
-            <div className="flex items-center justify-between mb-6 border-b border-emerald-900/20 pb-2">
-              <div className="flex items-center space-x-2">
-                <Target size={16} className="text-emerald-400" />
-                <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Depth_Vector_Shift</h3>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3">
+                 <h2 className="text-2xl font-black text-emerald-400 uppercase tracking-tighter leading-none">
+                   {isLoadingWellData ? 'LOCATING_WELL_ARTIFACT...' : currentWellData?.name || 'SYSTEM_INITIALIZING'}
+                 </h2>
+                 {!isLoadingWellData && currentWellData && (
+                   <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500 text-slate-950 rounded-full text-[9px] font-black uppercase tracking-widest shadow-[0_0_15px_#00FF41]">
+                     <Lock size={10} /> Registry_Locked
+                   </div>
+                 )}
               </div>
-              <div className="flex items-center space-x-3">
-                <button 
-                  onClick={() => setAutoDetectEnabled(!autoDetectEnabled)}
-                  title={autoDetectEnabled ? "Live_Audit: Active" : "Live_Audit: Inactive"}
-                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all ${autoDetectEnabled ? 'bg-orange-500/10 border-orange-500 text-orange-500' : 'bg-slate-900 border-emerald-900/20 text-emerald-900'}`}
-                >
-                  <Activity size={10} className={autoDetectEnabled ? 'animate-pulse' : ''} />
-                  <span className="text-[7px] font-black uppercase">{autoDetectEnabled ? 'AUTO' : 'MANUAL'}</span>
-                </button>
-                <div className={`w-1.5 h-1.5 rounded-full ${Math.abs(offset) > 0 ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-              </div>
-            </div>
-
-            <div className="flex flex-col space-y-6">
-              {/* Display Mode Selector */}
-              <div className="p-3 bg-slate-900/60 rounded-xl border border-emerald-500/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Layers size={12} className="text-emerald-500" />
-                    <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Visual_Mode_Veto</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-1">
-                  {(['OVERLAY', 'DIFFERENTIAL', 'WAVEFORM'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setViewMode(mode)}
-                      className={`py-1.5 rounded text-[7px] font-black border transition-all uppercase ${
-                        viewMode === mode 
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]' 
-                          : 'bg-slate-950 text-emerald-900 border-emerald-900/30 hover:border-emerald-500/40'
-                      }`}
-                    >
-                      {mode === 'DIFFERENTIAL' ? 'DIFF' : mode === 'WAVEFORM' ? 'WAVE' : 'MAP'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center justify-center p-4 bg-black/40 border border-emerald-900/10 rounded-xl relative overflow-hidden shadow-inner">
-                <div className="absolute top-1 left-1 opacity-10"><Zap size={10} className="text-emerald-500" /></div>
-                <span className="text-[8px] text-emerald-900 font-black uppercase tracking-[0.3em] mb-1">Current_Discordance</span>
-                <div className="text-3xl font-black font-terminal text-emerald-400 tracking-tighter tabular-nums text-center">
-                  {localOffset > 0 ? '+' : ''}{localOffset.toFixed(3)}<span className="text-xs ml-1 text-emerald-900">m</span>
-                  {(isAutoAuditing || isAuditingVariance) && (
-                    <div className="flex flex-col items-center mt-1 animate-pulse">
-                      <div className={`text-[7px] font-black tracking-widest uppercase ${isAuditingVariance ? 'text-purple-400' : 'text-orange-500'}`}>
-                        {isAuditingVariance ? 'Deep_Variance_Scan' : 'Background_Audit_Active'}
-                      </div>
-                      {isAuditingVariance && <Fingerprint size={10} className="text-purple-500 mt-0.5" />}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-                <button 
-                  onClick={() => setIsRemoteInputVisible(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-lg font-black text-[9px] uppercase tracking-[0.2em] hover:bg-blue-500 transition-all shadow-[0_0_15px_rgba(37,99,235,0.2)]"
-                >
-                  <Globe size={14} />
-                  <span>Remote_Forensic_Acquisition</span>
-                </button>
-              </div>
-
-              {/* Forensic Filter Logic Gate */}
-              <div className="p-3 bg-slate-900/60 rounded-xl border border-emerald-500/20 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Filter size={12} className="text-emerald-500" />
-                    <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Severity_Veto</span>
-                  </div>
-                  <span className="text-[7px] font-black uppercase text-emerald-900 tracking-widest">Active: {severityFilter}</span>
-                </div>
-                <div className="grid grid-cols-4 gap-1">
-                  {(['ALL', 'CRITICAL', 'WARNING', 'MICRO'] as const).map((sev) => (
-                    <button
-                      key={sev}
-                      onClick={() => setSeverityFilter(sev)}
-                      className={`py-1.5 rounded text-[7px] font-black border transition-all uppercase ${
-                        severityFilter === sev 
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]' 
-                          : 'bg-slate-950 text-emerald-900 border-emerald-900/30 hover:border-emerald-500/40'
-                      }`}
-                    >
-                      {sev}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Forensic Res and Variance Control */}
-              <div className="p-3 bg-slate-900/40 rounded-xl border border-emerald-500/20 space-y-4">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <SlidersHorizontal size={12} className="text-emerald-600" />
-                      <span className="text-[8px] font-black text-emerald-700 uppercase tracking-widest">Forensic_Res</span>
-                    </div>
-                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded ${microSensitivity ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-emerald-800'}`}>
-                      {microSensitivity ? 'Micro_Scan: On' : 'Standard'}
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => setMicroSensitivity(!microSensitivity)}
-                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg border transition-all text-[9px] font-black uppercase tracking-[0.2em] ${microSensitivity ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-slate-950 border-emerald-900/30 text-emerald-900 hover:text-emerald-400'}`}
-                  >
-                    <Zap size={12} className={microSensitivity ? 'animate-pulse' : ''} />
-                    <span>Micro_Sensitivity</span>
-                  </button>
-                </div>
-
-                <div className="pt-2 border-t border-emerald-900/10 space-y-2">
-                  <div className="flex justify-between items-center text-[8px] font-black text-emerald-800 uppercase tracking-widest">
-                    <span>Variance_Window</span>
-                    <span className="text-emerald-500">{varianceWindow}m</span>
-                  </div>
-                  <input 
-                    type="range" min="2" max="20" step="1" 
-                    value={varianceWindow} onChange={e => setVarianceWindow(parseInt(e.target.value))}
-                    className="w-full h-1 bg-slate-950 appearance-none rounded-full accent-purple-500 cursor-pointer" 
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-[9px] font-black text-emerald-900 uppercase">
-                  <span>-30.0m</span>
-                  <span className="text-emerald-500">Manual_Override</span>
-                  <span>+30.0m</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="-30" 
-                  max="30" 
-                  step="0.01" 
-                  value={localOffset} 
-                  onChange={(e) => setLocalOffset(parseFloat(e.target.value))}
-                  className="w-full h-2 bg-slate-900 appearance-none rounded-full cursor-pointer accent-emerald-500 border border-emerald-900/20 hover:accent-emerald-400 transition-all shadow-[0_0_10px_rgba(16,185,129,0.1)]" 
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  onClick={() => setLocalOffset(localOffset + 0.05)}
-                  className="flex items-center justify-center space-x-2 py-3 bg-slate-900/60 border border-emerald-900/30 rounded-lg text-emerald-500 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all group"
-                >
-                  <ChevronUp size={14} className="group-hover:-translate-y-0.5 transition-transform" />
-                  <span className="text-[9px] font-black uppercase">+0.05m</span>
-                </button>
-                <button 
-                  onClick={() => setLocalOffset(localOffset - 0.05)}
-                  className="flex items-center justify-center space-x-2 py-3 bg-slate-900/60 border border-emerald-900/30 rounded-lg text-emerald-500 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all group"
-                >
-                  <ChevronDown size={14} className="group-hover:translate-y-0.5 transition-transform" />
-                  <span className="text-[9px] font-black uppercase">-0.05m</span>
-                </button>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                <button 
-                  onClick={() => runAnomalyScan(false)}
-                  disabled={isScanningAnomalies || isAuditingVariance}
-                  className="w-full py-3 bg-emerald-500 text-slate-950 rounded-lg font-black text-[10px] uppercase tracking-[0.2em] hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2"
-                >
-                  {isScanningAnomalies ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                  Initiate_Datum_Audit
-                </button>
-                
-                {/* Enhanced Action Row: Auto_Tie & Variance_Audit */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={() => detectOptimalShift()}
-                    disabled={isSyncing || isSweeping}
-                    className={`flex items-center justify-center gap-2 py-3 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all ${isSyncing ? 'bg-emerald-900/20 text-emerald-900' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-md'}`}
-                  >
-                    {isSyncing ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
-                    Auto_Tie
-                  </button>
-                  <button 
-                    onClick={() => runVarianceAudit()}
-                    disabled={isAuditingVariance || isScanningAnomalies}
-                    className="flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-purple-500 shadow-md transition-all"
-                  >
-                    {isAuditingVariance ? <Loader2 size={12} className="animate-spin" /> : <Fingerprint size={12} />}
-                    Var_Audit
-                  </button>
-                </div>
-
-                <button 
-                  onClick={() => setLocalOffset(0)}
-                  className="w-full py-2 bg-slate-950 border border-emerald-900/20 rounded-md text-[8px] font-black text-emerald-900 uppercase tracking-widest hover:text-emerald-400 hover:border-emerald-400 transition-all"
-                >
-                  Reset_Datum_Lock
-                </button>
+              <div className="flex items-center gap-4 mt-1">
+                 <span className="text-[10px] font-black text-emerald-900 uppercase tracking-[0.3em]">
+                   {isLoadingWellData ? 'Crawling National Data Repository...' : `UWI: ${currentWellData?.projectId || 'PENDING_RESOLVE'}`}
+                 </span>
+                 <div className="h-3 w-px bg-emerald-900/20"></div>
+                 <span className="text-[10px] font-mono text-emerald-100/60 uppercase">
+                   {currentWellData?.quadrant || '---'} // {currentWellData?.status || '---'}
+                 </span>
               </div>
             </div>
-
-            {validationError && (
-              <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg flex items-start space-x-2 animate-in fade-in zoom-in duration-300">
-                <Shield size={14} className="text-orange-500 shrink-0 mt-0.5" />
-                <span className="text-[8px] font-black text-orange-400 uppercase leading-tight">{validationError}</span>
-              </div>
-            )}
           </div>
 
-          <GhostSyncAnomalyList 
-            anomalies={filteredAnomalies} 
-            isVisible={showAnomalies} 
-            onToggle={() => setShowAnomalies(!showAnomalies)} 
-            isScanning={isScanningAnomalies || isAutoAuditing || isAuditingVariance} 
-            activeAnomalyId={activeAnomalyId}
-            onHoverAnomaly={setActiveAnomalyId}
-          />
-          
-          <GhostSyncSignalRegistry 
-            signals={signals} 
-            onToggle={toggleSignalVisibility} 
-            onUpdateColor={updateSignalColor}
-            onReorder={reorderSignals}
-            onAddSignal={addManualSignal}
-            onRemoveSignal={removeSignal}
-          />
+          <div className="flex items-center gap-3 relative z-10">
+            <button 
+              onClick={() => setIsWellInfoExpanded(!isWellInfoExpanded)}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all border ${isWellInfoExpanded ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-xl' : 'bg-slate-800 text-emerald-500 border-emerald-900/50 hover:bg-emerald-500/10 hover:border-emerald-500'}`}
+            >
+              <Info size={16} />
+              <span>{isWellInfoExpanded ? 'Close Registry' : 'Well Information'}</span>
+              {isWellInfoExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            <div className="h-10 w-px bg-emerald-900/20 mx-2"></div>
+            <button onClick={() => setIsTerminalExpanded(true)} aria-label="Open Command Console" className="p-3 bg-slate-800 border border-emerald-500/20 text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-slate-950 transition-all shadow-xl"><TerminalIcon size={20} /></button>
+            {onToggleFocus && (
+              <button onClick={onToggleFocus} aria-label="Toggle Focus Mode" className="p-3 text-emerald-900 hover:text-[#00FF41] transition-all bg-slate-800 border border-emerald-500/10 rounded-xl">
+                {isFocused ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isWellInfoExpanded && (
+          <div className="animate-in slide-in-from-top-4 duration-500 overflow-hidden">
+            <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-8 shadow-2xl relative">
+              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+                 <Building size={160} className="text-emerald-500" />
+              </div>
+
+              {isLoadingWellData ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-4">
+                   <Loader2 size={40} className="text-emerald-500 animate-spin" />
+                   <span className="text-emerald-400 font-black uppercase tracking-[0.5em] animate-pulse">Establishing_Secure_NDR_Uplink...</span>
+                </div>
+              ) : currentWellData ? (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                   <div className="space-y-6 md:col-span-1">
+                      <div className="space-y-1">
+                         <span className="text-[10px] font-black text-emerald-900 uppercase tracking-widest block mb-1">Project_Context</span>
+                         <h4 className="text-lg font-black text-emerald-100 uppercase leading-tight">{currentWellData.name}</h4>
+                      </div>
+                      <div className="space-y-3">
+                         <div className="p-4 bg-black/40 border border-emerald-900/20 rounded-xl space-y-2">
+                            <span className="text-[8px] font-black text-emerald-900 uppercase">Registry_Status</span>
+                            <div className="flex items-center gap-2">
+                               <ShieldCheck size={14} className="text-emerald-500" />
+                               <span className="text-xs font-black text-emerald-100 uppercase">{currentWellData.status}</span>
+                            </div>
+                         </div>
+                         <div className="p-4 bg-black/40 border border-emerald-900/20 rounded-xl space-y-2">
+                            <span className="text-[8px] font-black text-emerald-900 uppercase">Archive_Volume</span>
+                            <div className="flex items-center gap-2">
+                               <Database size={14} className="text-emerald-500" />
+                               <span className="text-xs font-black text-emerald-100 uppercase">{currentWellData.sizeGb} GB Encrypted</span>
+                            </div>
+                         </div>
+                      </div>
+                   </div>
+
+                   <div className="md:col-span-3 grid grid-cols-2 lg:grid-cols-3 gap-6">
+                      <div className="p-5 bg-black/40 border border-emerald-900/20 rounded-2xl flex flex-col justify-between group/card hover:border-emerald-500/40 transition-colors">
+                         <span className="text-[9px] font-black text-emerald-900 uppercase mb-4 block group-hover/card:text-emerald-500 transition-colors">Wellbore_Identity</span>
+                         <div className="space-y-1">
+                            <span className="text-sm font-black text-emerald-100 uppercase block">{currentWellData.wellboreType}</span>
+                            <span className="text-[10px] font-mono text-emerald-800">CLASS: FORENSIC_GHOST</span>
+                         </div>
+                         <div className="mt-6 flex items-center gap-2">
+                            <MapPin size={12} className="text-emerald-500" />
+                            <span className="text-[10px] font-black text-emerald-100 uppercase">{currentWellData.quadrant}</span>
+                         </div>
+                      </div>
+
+                      <div className="p-5 bg-black/40 border border-emerald-900/20 rounded-2xl flex flex-col justify-between group/card hover:border-emerald-500/40 transition-colors">
+                         <span className="text-[9px] font-black text-emerald-900 uppercase mb-4 block group-hover/card:text-emerald-500 transition-colors">Chronological_Anchor</span>
+                         <div className="space-y-1">
+                            <span className="text-sm font-black text-emerald-100 uppercase block">{currentWellData.releaseDate}</span>
+                            <span className="text-[10px] font-mono text-emerald-800">DATUM_STAMP: RELEASED</span>
+                         </div>
+                         <div className="mt-6 flex items-center gap-2">
+                            <Calendar size={12} className="text-emerald-500" />
+                            <span className="text-[10px] font-black text-emerald-100 uppercase">Legacy Trace Found</span>
+                         </div>
+                      </div>
+
+                      <div className="p-5 bg-black/40 border border-emerald-900/20 rounded-2xl flex flex-col justify-between group/card hover:border-emerald-500/40 transition-colors">
+                         <span className="text-[9px] font-black text-emerald-900 uppercase mb-4 block group-hover/card:text-emerald-500 transition-colors">Forensic_Integrity</span>
+                         <div className="space-y-1">
+                            <span className={`text-sm font-black uppercase block ${currentWellData.hasDatumShiftIssues ? 'text-red-500' : 'text-emerald-500'}`}>
+                              {currentWellData.hasDatumShiftIssues ? 'DATUM_SHIFT_DETECTED' : 'DATUM_SYNCED'}
+                            </span>
+                            <span className="text-[10px] font-mono text-emerald-800">VETO_PROBABILITY: 88%</span>
+                         </div>
+                         <div className="mt-6 flex items-center gap-2">
+                            <AlertOctagon size={12} className={currentWellData.hasDatumShiftIssues ? 'text-red-500' : 'text-emerald-500'} />
+                            <span className="text-[10px] font-black text-emerald-100 uppercase">{currentWellData.hasDatumShiftIssues ? 'AUDIT_REQUIRED' : 'NOMINAL'}</span>
+                         </div>
+                      </div>
+
+                      <div className="col-span-full pt-6 mt-2 border-t border-emerald-900/20 flex items-center justify-between">
+                         <div className="flex items-center gap-3">
+                            <span className="text-[10px] font-black text-emerald-900 uppercase">SHA512_Ledger_Proof</span>
+                            <div className="px-4 py-1.5 bg-black rounded border border-emerald-900/40 font-mono text-[9px] text-emerald-600 truncate max-w-lg">
+                               {currentWellData.sha512}
+                            </div>
+                         </div>
+                         <div className="flex gap-4">
+                            <button className="flex items-center gap-2 text-[10px] font-black text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors">
+                               <ExternalLink size={14} /> Open_Portal
+                            </button>
+                            <button className="flex items-center gap-2 text-[10px] font-black text-emerald-500 hover:text-emerald-400 uppercase tracking-widest transition-colors">
+                               <Download size={14} /> Fetch_Artifacts
+                            </button>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 opacity-20 space-y-4">
+                   <AlertCircle size={64} />
+                   <span className="text-xl font-black uppercase tracking-widest">Wellbore_Registry_Void</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 flex flex-row gap-4 min-h-0 overflow-hidden relative">
+        <div className="flex-1 flex flex-col space-y-4">
+           <GhostSyncChartContainer 
+             viewMode={viewMode} combinedData={combinedData} signals={signals || []} ghostLabel={Math.abs(stableOffset) > 0.05 ? "CALIBRATED_LOG" : "GHOST_LOG"} 
+             validationError={validationError} offset={stableOffset} showAnomalies={showAnomalies} detectedAnomalies={filteredAnomalies} anomalyThreshold={anomalyThreshold} 
+             activeAnomalyId={activeAnomalyId} varianceWindow={varianceWindow} isAuditingVariance={isAuditingVariance} zoomRange={zoomRange} onZoomRangeChange={setZoomRange} hasDiscordanceAlert={hasDiscordanceAlert}
+           />
+           <GhostSyncStats sigmaScore={sigmaScore} driftRiskScore={driftRiskScore} correlationScore={correlationScore} anomaliesCount={filteredAnomalies.length} />
+        </div>
+
+        <div className="w-full xl:w-[400px] flex flex-col space-y-4 overflow-y-auto custom-scrollbar pr-1">
+          <div className="bg-slate-950/90 border border-emerald-500/20 rounded-2xl flex flex-col h-[420px] shadow-2xl relative overflow-hidden group">
+             <div className="p-3 border-b border-emerald-500/10 flex items-center justify-between bg-emerald-500/5">
+                <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest"><TerminalIcon size={14} className="animate-pulse" /> <span>Seer_Forensic_Console</span></div>
+                <button onClick={() => setIsTerminalExpanded(true)} aria-label="Maximize Console" className="p-1 hover:bg-emerald-500/20 text-emerald-500 rounded transition-colors"><Maximize2 size={12} /></button>
+             </div>
+             <div ref={cliScrollRef} className="flex-1 overflow-y-auto p-4 font-mono text-[10px] space-y-1.5 custom-scrollbar bg-black/40">
+                {cliLogs.length === 0 && <div className="flex flex-col items-center justify-center h-full opacity-20 space-y-4"><Database size={32} /><div className="text-center italic leading-tight">Awaiting forensic kernel...</div></div>}
+                {cliLogs.map((log, i) => <div key={i} className={`animate-in fade-in slide-in-from-left-1 leading-relaxed ${log?.type === 'ERR' ? 'text-red-500 font-black border-l-2 border-red-500 pl-2 bg-red-500/5' : log?.type === 'SUCCESS' ? 'text-emerald-400 font-black' : 'text-emerald-600/80'}`}>{log?.msg || ""}</div>)}
+             </div>
+             <div className="p-3 bg-slate-900/60 border-t border-emerald-500/10 flex items-center gap-2 relative">
+                <span className="text-[10px] font-black text-blue-500">$</span>
+                <input ref={inputRef} type="text" value={cliInput} aria-label="Forensic Command Prompt" onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Invoke_Forensic_Procedure..." className="flex-1 bg-transparent border-none text-[10px] text-emerald-100 font-mono outline-none" />
+             </div>
+          </div>
+          <DataIntegrityLegend />
+          <GhostSyncCalibration offset={localSliderOffset} onOffsetChange={setLocalSliderOffset} validationError={validationError} anomalyThreshold={anomalyThreshold} effectiveThreshold={effectiveThreshold} onThresholdChange={setAnomalyThreshold} isAuditingVariance={isAuditingVariance} onRunVarianceAudit={() => runVarianceAudit(varianceWindow)} varianceWindow={varianceWindow} />
+          <GhostSyncAnomalyList anomalies={filteredAnomalies} isVisible={showAnomalies} onToggle={() => setShowAnomalies(!showAnomalies)} isScanning={isScanningAnomalies || isAutoAuditing} activeAnomalyId={activeAnomalyId} onHoverAnomaly={setActiveAnomalyId} onInspectAnomaly={runDeepAnomalyAudit} />
         </div>
       </div>
     </div>

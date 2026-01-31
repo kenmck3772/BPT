@@ -1,16 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Cpu, Terminal, Ghost, Box, Activity, 
-  FileSearch, Lock, Database, Globe, 
-  SearchCode, Briefcase, Shield, Microscope, 
-  Waves, Beaker, BookOpen, Menu, X, Settings, 
-  Fingerprint, FlaskConical
+  Cpu, Activity, Ghost, Box, FileSearch, Lock, 
+  Database, Globe, SearchCode, Briefcase, Shield, 
+  Microscope, Waves, Beaker, BookOpen, Menu, X, 
+  Settings, Fingerprint, FlaskConical, HeartPulse, 
+  Target, MapPin, Newspaper, BarChart3, Binary, 
+  ShieldCheck, Maximize2, Minimize2, LogOut, Cloud, 
+  Loader2, Home, ClipboardList, Zap, Info, 
+  AlertOctagon, Scan, Thermometer, Terminal as TerminalIcon,
+  CircleDot, Camera, Hammer, Table
 } from 'lucide-react';
 
-// Import all forensic modules
 import MissionControl from './components/MissionControl';
-import GhostSync from './components/GhostSync';
+import GhostSync from './GhostSync'; 
 import TraumaNode from './components/TraumaNode';
 import PulseAnalyzer from './components/PulseAnalyzer';
 import ReportsScanner from './components/ReportsScanner';
@@ -25,153 +28,229 @@ import ChanonryProtocol from './components/ChanonryProtocol';
 import ProtocolManual from './components/ProtocolManual';
 import ForensicArcheology from './components/ForensicArcheology';
 import ChemistryForensics from './components/ChemistryForensics';
+import CardioForensics from './components/CardioForensics';
+import NewsHub from './components/NewsHub';
+import BasinAudit from './components/BasinAudit';
+import ForensicHarvester from './components/ForensicHarvester';
+import CerberusSimulator from './components/CerberusSimulator';
+import SovereignAuth from './components/SovereignAuth';
+import ForensicAuditor from './components/ForensicAuditor';
+import ForensicLab from './components/ForensicLab';
+import SovereignManifesto from './components/SovereignManifesto';
+import BallochAudit from './components/BallochAudit';
+import ForensicVision from './components/ForensicVision';
+import NinianNorthTally from './components/NinianNorthTally';
+import { SovereignLedger } from './components/SovereignLedger';
 
 import { ActiveModule } from './types';
+import { searchNDRMetadata } from './services/ndrService';
+import { onSovereignStateChange, logoutSovereignNode } from './services/authService';
 
 export default function App() {
+  const [user, setUser] = useState<any | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [activeModule, setActiveModule] = useState<ActiveModule>(ActiveModule.MISSION_CONTROL);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [status, setStatus] = useState('offline');
+  const [isModuleFocused, setIsModuleFocused] = useState(false);
+  const [wellName, setWellName] = useState<string>('SYSTEM_READY');
+  const [manifestoAcl, setManifestoAcl] = useState(false);
 
   useEffect(() => {
-    const checkEngine = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/');
-        if (res.ok) setStatus('idle');
-      } catch (e) { setStatus('offline'); }
-    };
-    checkEngine();
+    const unsubscribe = onSovereignStateChange((currentUser) => {
+      setUser(currentUser);
+      setIsAuthChecking(false);
+    });
+    return () => unsubscribe();
   }, []);
 
-  const navItems = [
-    { id: ActiveModule.MISSION_CONTROL, label: 'Mission_Control', icon: <Terminal size={18} />, category: 'Core' },
-    { id: ActiveModule.NORWAY_SOVEREIGN, label: 'Metadata_Crawl', icon: <Globe size={18} />, category: 'Core' },
-    { id: ActiveModule.FORENSIC_ARCHEOLOGY, label: 'Data_Archeology', icon: <Fingerprint size={18} />, category: 'Forensics' },
-    { id: ActiveModule.CHEMISTRY_FORENSICS, label: 'Chem_Autopsy', icon: <FlaskConical size={18} />, category: 'Forensics' },
-    { id: ActiveModule.GHOST_SYNC, label: 'Ghost_Sync', icon: <Ghost size={18} />, category: 'Forensics' },
-    { id: ActiveModule.TRAUMA_NODE, label: 'Trauma_Node_3D', icon: <Box size={18} />, category: 'Forensics' },
-    { id: ActiveModule.PULSE_ANALYZER, label: 'Pulse_Analyzer', icon: <Activity size={18} />, category: 'Forensics' },
-    { id: ActiveModule.LEGACY_RECOVERY, label: 'Pay_Recovery', icon: <Waves size={18} />, category: 'Forensics' },
-    { id: ActiveModule.REPORTS_SCANNER, label: 'Reports_Scanner', icon: <FileSearch size={18} />, category: 'Audit' },
-    { id: ActiveModule.LOG_ROUTER, label: 'Log_Router', icon: <SearchCode size={18} />, category: 'Audit' },
-    { id: ActiveModule.GATEKEEPER, label: 'Gatekeeper', icon: <Shield size={18} />, category: 'Integrity' },
-    { id: ActiveModule.CHANONRY_PROTOCOL, label: 'Chanonry_Logic', icon: <Beaker size={18} />, category: 'Integrity' },
-    { id: ActiveModule.PROSPECTOR, label: 'Prospector', icon: <Briefcase size={18} />, category: 'Intel' },
-    { id: ActiveModule.VANGUARD, label: 'Vanguard_R&D', icon: <Microscope size={18} />, category: 'Intel' },
-    { id: ActiveModule.VAULT, label: 'Sovereign_Vault', icon: <Lock size={18} />, category: 'System' },
-    { id: ActiveModule.PROTOCOL_MANUAL, label: 'User_Manual', icon: <BookOpen size={18} />, category: 'System' },
-  ];
+  const handleAuthenticated = (authenticatedUser: any) => {
+    setUser(authenticatedUser);
+  };
+
+  const handleLogout = async () => {
+    await logoutSovereignNode();
+  };
+
+  const goHome = () => {
+    setActiveModule(ActiveModule.MISSION_CONTROL);
+    setIsModuleFocused(false);
+  };
+
+  const toggleModuleFocus = () => {
+    setIsModuleFocused(!isModuleFocused);
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.warn(`Fullscreen error: ${err.message}`);
+      });
+      setIsModuleFocused(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+      setIsModuleFocused(false);
+    }
+  };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        toggleModuleFocus();
+      }
+      if (e.key === 'Escape' && isModuleFocused) {
+        setIsModuleFocused(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isModuleFocused]);
+
+  useEffect(() => {
+    if (activeModule === ActiveModule.GHOST_SYNC) {
+      const fetchContext = async () => {
+        try {
+          const results = await searchNDRMetadata('Ninian');
+          if (results && results.length > 0) {
+            setWellName(results[0]?.name?.toUpperCase() || "NINIAN_HUB");
+          }
+        } catch (err) {
+          setWellName("FETCH_ERROR");
+        }
+      };
+      fetchContext();
+    } else {
+      switch(activeModule) {
+        case ActiveModule.MISSION_CONTROL: setWellName("GLOBAL_MISSION_HUB"); break;
+        case ActiveModule.TRAUMA_NODE: setWellName("NINIAN_CENTRAL_N-42"); break;
+        case ActiveModule.LEGACY_RECOVERY: setWellName("RANKIN-12"); break;
+        case ActiveModule.NEWS_HUB: setWellName("INTEL_SURFACE_V4"); break;
+        case ActiveModule.BASIN_AUDIT: setWellName("UKCS_ENFORCEMENT_HUB"); break;
+        case ActiveModule.FORENSIC_HARVESTER: setWellName("NINIAN_N42_RECON"); break;
+        case ActiveModule.CERBERUS: setWellName("SUBSURFACE_SIM_K9"); break;
+        case ActiveModule.FORENSIC_AUDITOR: setWellName("HARRIS/HEATHER_AUDIT"); break;
+        case ActiveModule.FORENSIC_LAB: setWellName("PLAYWRIGHT_SANDBOX"); break;
+        case ActiveModule.BALLOCH_AUDIT: setWellName("BALLOCH_SPECIAL_AUDIT"); break;
+        case ActiveModule.SOVEREIGN_LEDGER: setWellName("MATERIAL_PROVENANCE"); break;
+        case ActiveModule.FORENSIC_VISION: setWellName("VISUAL_AUTOPSY_LAB"); break;
+        case ActiveModule.NINIAN_TALLY: setWellName("NINIAN_NORTH_TALLY"); break;
+        default: setWellName("ACTIVE_INVESTIGATION");
+      }
+    }
+  }, [activeModule]);
+
+  if (!manifestoAcl) {
+    return <SovereignManifesto onAcknowledge={() => setManifestoAcl(true)} />;
+  }
+
+  if (isAuthChecking) {
+    return (
+      <div className="h-screen w-screen bg-black flex flex-col items-center justify-center space-y-6 font-terminal">
+        <Loader2 size={48} className="text-emerald-500 animate-spin" />
+        <span className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.5em] animate-pulse">Establishing_Sovereign_Uplink</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <SovereignAuth onAuthenticated={handleAuthenticated} />;
+  }
+
+  const commonProps = {
+    isFocused: isModuleFocused,
+    onToggleFocus: toggleModuleFocus
+  };
 
   const renderModule = () => {
     switch (activeModule) {
-      case ActiveModule.MISSION_CONTROL: return <MissionControl />;
-      case ActiveModule.GHOST_SYNC: return <GhostSync />;
-      case ActiveModule.TRAUMA_NODE: return <TraumaNode onToggleFocus={() => {}} />;
-      case ActiveModule.PULSE_ANALYZER: return <PulseAnalyzer />;
-      case ActiveModule.REPORTS_SCANNER: return <ReportsScanner />;
+      case ActiveModule.MISSION_CONTROL: return <MissionControl setGlobalWellName={setWellName} />;
+      case ActiveModule.GHOST_SYNC: return <GhostSync {...commonProps} />;
+      case ActiveModule.TRAUMA_NODE: return <TraumaNode {...commonProps} />;
+      case ActiveModule.PULSE_ANALYZER: return <PulseAnalyzer {...commonProps} />;
+      case ActiveModule.REPORTS_SCANNER: return <ReportsScanner {...commonProps} />;
       case ActiveModule.VAULT: return <Vault />;
-      case ActiveModule.NORWAY_SOVEREIGN: return <NorwaySovereign />;
-      case ActiveModule.LOG_ROUTER: return <LogRouter />;
+      case ActiveModule.NORWAY_SOVEREIGN: return <NorwaySovereign {...commonProps} />;
+      case ActiveModule.LOG_ROUTER: return <LogRouter {...commonProps} />;
       case ActiveModule.PROSPECTOR: return <Prospector />;
       case ActiveModule.GATEKEEPER: return <GatekeeperConsole />;
       case ActiveModule.VANGUARD: return <Vanguard />;
       case ActiveModule.LEGACY_RECOVERY: return <LegacyRecovery />;
       case ActiveModule.CHANONRY_PROTOCOL: return <ChanonryProtocol />;
       case ActiveModule.PROTOCOL_MANUAL: return <ProtocolManual />;
-      case ActiveModule.FORENSIC_ARCHEOLOGY: return <ForensicArcheology />;
-      case ActiveModule.CHEMISTRY_FORENSICS: return <ChemistryForensics />;
-      default: return <MissionControl />;
+      case ActiveModule.FORENSIC_ARCHEOLOGY: return <ForensicArcheology {...commonProps} />;
+      case ActiveModule.CHEMISTRY_FORENSICS: return <ChemistryForensics {...commonProps} />;
+      case ActiveModule.CARDIO_FORENSICS: return <CardioForensics {...commonProps} />;
+      case ActiveModule.NEWS_HUB: return <NewsHub />;
+      case ActiveModule.BASIN_AUDIT: return <BasinAudit {...commonProps} />;
+      case ActiveModule.FORENSIC_HARVESTER: return <ForensicHarvester {...commonProps} />;
+      case ActiveModule.CERBERUS: return <CerberusSimulator {...commonProps} />;
+      case ActiveModule.FORENSIC_AUDITOR: return <ForensicAuditor {...commonProps} />;
+      case ActiveModule.FORENSIC_LAB: return <ForensicLab {...commonProps} />;
+      case ActiveModule.BALLOCH_AUDIT: return <BallochAudit {...commonProps} />;
+      case ActiveModule.SOVEREIGN_LEDGER: return <SovereignLedger />;
+      case ActiveModule.FORENSIC_VISION: return <ForensicVision {...commonProps} />;
+      case ActiveModule.NINIAN_TALLY: return <NinianNorthTally {...commonProps} />;
+      default: return <MissionControl setGlobalWellName={setWellName} />;
     }
   };
 
   return (
-    <div className="flex h-screen bg-black text-[#00FF41] font-mono overflow-hidden selection:bg-[#00FF41] selection:text-black">
-      {/* Dynamic Sidebar */}
-      <aside 
-        className={`${isSidebarOpen ? 'w-64' : 'w-20'} border-r border-[#00FF41]/20 bg-slate-950/80 backdrop-blur-md flex flex-col transition-all duration-300 z-50`}
-      >
-        <div className="p-6 border-b border-[#00FF41]/20 flex items-center justify-between">
-          <div className={`flex items-center gap-3 ${!isSidebarOpen && 'hidden'}`}>
-            <Cpu size={24} className={status === 'offline' ? 'text-red-900' : 'animate-pulse text-[#00FF41]'} />
-            <h1 className="text-xl font-black tracking-tighter">BRAHAN_v88</h1>
-          </div>
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1 hover:bg-[#00FF41]/10 rounded">
-            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+    <div className="flex h-screen w-screen bg-black text-[#E0E0E0] font-mono overflow-hidden selection:bg-[#00FF41] selection:text-black transition-all duration-700">
+      {isModuleFocused && (
+        <div className="fixed bottom-8 left-8 z-[1000] animate-in slide-in-from-left-8 duration-500">
+          <button 
+            onClick={goHome}
+            className="flex items-center gap-3 p-4 bg-black border-2 border-emerald-500 rounded-full text-emerald-500 hover:bg-emerald-500 hover:text-black transition-all shadow-[0_0_20px_rgba(16,185,129,0.4)] group active:scale-90"
+            title="Return to Mission Control"
+          >
+            <Home size={24} />
           </button>
         </div>
+      )}
 
-        <nav className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-6">
-          {['Core', 'Forensics', 'Audit', 'Integrity', 'Intel', 'System'].map(cat => (
-            <div key={cat} className="space-y-1">
-              {isSidebarOpen && <span className="text-[10px] font-black uppercase text-[#003b0f] px-3 tracking-[0.2em]">{cat}</span>}
-              {navItems.filter(i => i.category === cat).map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveModule(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group ${
-                    activeModule === item.id 
-                    ? 'bg-[#00FF41] text-black shadow-[0_0_15px_rgba(0,255,65,0.4)]' 
-                    : 'text-[#003b0f] hover:text-[#00FF41] hover:bg-[#00FF41]/5'
-                  }`}
-                >
-                  <div className={`${activeModule === item.id ? 'text-black' : 'text-[#00FF41] group-hover:scale-110 transition-transform'}`}>
-                    {item.icon}
-                  </div>
-                  {isSidebarOpen && (
-                    <span className="text-[11px] font-black uppercase tracking-widest truncate">
-                      {item.label}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-[#00FF41]/20 bg-black/40">
-          <div className="flex items-center justify-between text-[10px] font-black uppercase text-[#003b0f]">
-            {isSidebarOpen && <span>Engine_Status:</span>}
-            <span className={status === 'offline' ? 'text-red-600' : 'text-[#00FF41]'}>{status}</span>
+      {!isModuleFocused && (
+        <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} border-r border-[#00FF41]/20 bg-slate-950/90 backdrop-blur-xl flex flex-col transition-all duration-500 z-[200] overflow-hidden`}>
+          <div className="p-4 border-b border-[#00FF41]/20 flex items-center justify-between bg-black/40 h-16 shrink-0">
+            <button onClick={goHome} className={`flex items-center gap-3 ${!isSidebarOpen && 'mx-auto'} hover:opacity-80 transition-all`}>
+              <CircleDot size={24} className="text-[#00FF41] animate-pulse shadow-[0_0_10px_#00FF41]" />
+              {isSidebarOpen && <h1 className="text-xl font-black tracking-tighter text-[#00FF41]">BRAHAN</h1>}
+            </button>
           </div>
-          <div className="mt-2 h-1 bg-slate-900 rounded-full overflow-hidden">
-            <div className={`h-full transition-all duration-1000 ${status === 'offline' ? 'bg-red-900' : 'bg-[#00FF41] w-full animate-pulse'}`}></div>
+          <nav className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-4">
+             <button onClick={() => setActiveModule(ActiveModule.MISSION_CONTROL)} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${activeModule === ActiveModule.MISSION_CONTROL ? 'bg-emerald-500 text-black' : 'hover:bg-emerald-500/10 text-emerald-500'}`}>
+                <Home size={18} /> {isSidebarOpen && "Home"}
+             </button>
+             <button onClick={() => setActiveModule(ActiveModule.NINIAN_TALLY)} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${activeModule === ActiveModule.NINIAN_TALLY ? 'bg-emerald-500 text-black' : 'hover:bg-emerald-500/10 text-emerald-500'}`}>
+                <Table size={18} /> {isSidebarOpen && "Steel Ledger"}
+             </button>
+             <button onClick={() => setActiveModule(ActiveModule.FORENSIC_VISION)} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${activeModule === ActiveModule.FORENSIC_VISION ? 'bg-emerald-500 text-black' : 'hover:bg-emerald-500/10 text-emerald-500'}`}>
+                <Camera size={18} /> {isSidebarOpen && "Vision Lab"}
+             </button>
+             <button onClick={() => setActiveModule(ActiveModule.BASIN_AUDIT)} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${activeModule === ActiveModule.BASIN_AUDIT ? 'bg-emerald-500 text-black' : 'hover:bg-emerald-500/10 text-emerald-500'}`}>
+                <BarChart3 size={18} /> {isSidebarOpen && "Basin Audit"}
+             </button>
+             <button onClick={() => setActiveModule(ActiveModule.VAULT)} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${activeModule === ActiveModule.VAULT ? 'bg-amber-500 text-black' : 'hover:bg-amber-500/10 text-amber-500'}`}>
+                <Lock size={18} /> {isSidebarOpen && "Vault"}
+             </button>
+          </nav>
+          
+          <div className="p-4 border-t border-[#00FF41]/20">
+             <button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-red-500/10 text-red-500">
+                <LogOut size={18} /> {isSidebarOpen && "De-Auth Node"}
+             </button>
           </div>
-        </div>
-      </aside>
+        </aside>
+      )}
 
-      <main className="flex-1 relative flex flex-col min-w-0">
-        <div className="absolute inset-0 pointer-events-none opacity-[0.03] z-0 overflow-hidden">
-           <div className="absolute top-0 left-0 w-full h-full" style={{ backgroundImage: 'radial-gradient(#00FF41 0.5px, transparent 0.5px)', backgroundSize: '30px 30px' }}></div>
-           <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-[#00FF41] rounded-full blur-[150px]"></div>
-        </div>
-
-        <div className="flex-1 relative z-10 overflow-hidden flex flex-col">
-          <div className="flex-1 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
+      <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden bg-[#020202]">
+        <div className={`flex-1 relative z-10 overflow-hidden flex flex-col ${isModuleFocused ? 'p-0' : 'p-4'}`}>
+          <div className="flex-1 overflow-hidden bg-slate-950/20 rounded-xl border border-[#00FF41]/5">
             {renderModule()}
           </div>
         </div>
-
-        <footer className="h-8 bg-black border-t border-[#00FF41]/20 px-4 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-[#003b0f] z-20">
-           <div className="flex items-center gap-6">
-              <span className="flex items-center gap-2"><Settings size={10} /> Kernel: V.88.777_SOVEREIGN</span>
-              <span className="flex items-center gap-2"><Database size={10} /> Vault_Buffer: Encrypted</span>
-           </div>
-           <div className="flex items-center gap-4">
-              <span>Auth_Token: LEVEL_7_ROOT</span>
-              <div className="flex items-center gap-1">
-                 <div className="w-1 h-1 bg-[#00FF41] rounded-full animate-ping"></div>
-                 <div className="w-1 h-1 bg-[#00FF41] rounded-full"></div>
-              </div>
-           </div>
-        </footer>
       </main>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 255, 65, 0.1); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 65, 0.3); }
-      `}} />
     </div>
   );
 }

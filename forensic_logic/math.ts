@@ -24,7 +24,6 @@ export function calculateLinearRegression(data: number[]): { slope: number; inte
 export function diagnoseSawtooth(rSquared: number, slope: number): { status: string; color: string; diagnosis: string } {
   const absSlope = Math.abs(slope);
   
-  // High confidence linear behavior (Consistent recharge/leak)
   if (rSquared > 0.98) {
     if (absSlope > 15) {
       return {
@@ -46,8 +45,6 @@ export function diagnoseSawtooth(rSquared: number, slope: number): { status: str
       };
     }
   } 
-  
-  // Moderate confidence (Unstable or transient effects)
   else if (rSquared > 0.85) {
     if (absSlope > 2) {
       return {
@@ -63,8 +60,6 @@ export function diagnoseSawtooth(rSquared: number, slope: number): { status: str
       };
     }
   } 
-  
-  // Low confidence (Erratic/Non-linear)
   else {
     return {
       status: "🟢 SYSTEM_IDLE: STATIC ANNULUS",
@@ -72,4 +67,33 @@ export function diagnoseSawtooth(rSquared: number, slope: number): { status: str
       diagnosis: "Non-linear pressure behavior detected. Typical of closed-system thermal normalization or localized fluid compression."
     };
   }
+}
+
+export function detectCyclicalCorrelation(pData: number[], tData: number[]): number {
+  if (pData.length !== tData.length || pData.length < 2) return 0;
+  const n = pData.length;
+  
+  let sumP = 0, sumT = 0, sumPT = 0, sumP2 = 0, sumT2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumP += pData[i] || 0;
+    sumT += tData[i] || 0;
+    sumPT += (pData[i] || 0) * (tData[i] || 0);
+    sumP2 += (pData[i] || 0) * (pData[i] || 0);
+    sumT2 += (tData[i] || 0) * (tData[i] || 0);
+  }
+  
+  const num = (n * sumPT) - (sumP * sumT);
+  const den = Math.sqrt((n * sumP2 - sumP * sumP) * (n * sumT2 - sumT * sumT));
+  return den === 0 ? 0 : num / den;
+}
+
+/**
+ * Calculates the phase lag (in units of sample indices) between 
+ * peak temperature and peak pressure pulses.
+ */
+export function calculateThermalLag(pData: number[], tData: number[]): number {
+  if (pData.length < 2 || tData.length < 2) return 0;
+  const pMaxIdx = pData.indexOf(Math.max(...pData));
+  const tMaxIdx = tData.indexOf(Math.max(...tData));
+  return Math.abs(pMaxIdx - tMaxIdx);
 }

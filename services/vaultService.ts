@@ -1,7 +1,8 @@
 
-import { AnalysisResult } from '../types';
+import { AnalysisResult, VaultConfig } from '../types';
 
 const STORAGE_KEY = 'BRAHAN_SOVEREIGN_CHEST';
+const CONFIG_KEY = 'BRAHAN_VAULT_CONFIG';
 
 export function playLockSound() {
   try {
@@ -39,6 +40,21 @@ export function playLockSound() {
   } catch (e) {
     console.warn("Audio Context blocked or unsupported");
   }
+}
+
+export function saveVaultConfig(config: VaultConfig) {
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  playLockSound();
+}
+
+export function getVaultConfig(): VaultConfig {
+  const saved = localStorage.getItem(CONFIG_KEY);
+  return saved ? JSON.parse(saved) : {
+    tenantId: "a4e4659f-6d6d-4e64-8dbd-3298ae05969e",
+    clientId: "ad24f806-8cfe-4d2b-917c-28db95867430",
+    siteId: "6c6998d8-b8af-4e28-9d34-af902416f6a0",
+    listWellMetadata: "f5a3e307-8e7c-472d-9440-936820134e4f"
+  };
 }
 
 export function secureAsset(asset: Omit<AnalysisResult, 'id' | 'timestamp' | 'hash'>): AnalysisResult {

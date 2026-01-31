@@ -20,6 +20,29 @@ export function calculateLinearRegression(data: number[]): { slope: number; inte
   return { slope, intercept, rSquared };
 }
 
+/**
+ * BRAHAN_SEER: CYCLICAL_PATTERN_DETECTION
+ * Analyzes correlation between two data streams (typically Pressure vs Temp).
+ * Lock-on identifies if P variance is a slave to T variance.
+ */
+export function detectCyclicalCorrelation(pData: number[], tData: number[]): number {
+  if (pData.length !== tData.length || pData.length < 2) return 0;
+  const n = pData.length;
+  
+  let sumP = 0, sumT = 0, sumPT = 0, sumP2 = 0, sumT2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumP += pData[i];
+    sumT += tData[i];
+    sumPT += pData[i] * tData[i];
+    sumP2 += pData[i] * pData[i];
+    sumT2 += tData[i] * tData[i];
+  }
+  
+  const num = (n * sumPT) - (sumP * sumT);
+  const den = Math.sqrt((n * sumP2 - sumP * sumP) * (n * sumT2 - sumT * sumT));
+  return den === 0 ? 0 : num / den;
+}
+
 export function diagnoseSawtooth(rSquared: number, slope: number): { status: string; color: string; diagnosis: string } {
   const absSlope = Math.abs(slope);
   

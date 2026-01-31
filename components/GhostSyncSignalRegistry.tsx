@@ -84,6 +84,7 @@ const GhostSyncSignalRegistry: React.FC<GhostSyncSignalRegistryProps> = ({
 
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
         {signals.map((sig, index) => {
+          if (!sig) return null; // Defensive check for null entries in signals array
           const isBase = sig.id === 'SIG-001' || sig.id === 'SIG-002';
           return (
             <div 
@@ -120,7 +121,7 @@ const GhostSyncSignalRegistry: React.FC<GhostSyncSignalRegistryProps> = ({
 
                 <div className="flex flex-col min-w-0">
                   <span className={`text-[9px] font-black uppercase truncate ${sig.visible ? 'text-emerald-100' : 'text-[#003b0f]'}`}>
-                    {sig.name}
+                    {sig.name || 'UNNAMED_TRACE'}
                   </span>
                   <span className="text-[7px] text-[#003b0f] font-mono tracking-tighter truncate">
                     ID: {sig.id}

@@ -1,21 +1,24 @@
+
 import React from 'react';
 import { 
   ResponsiveContainer, AreaChart, CartesianGrid, 
-  XAxis, YAxis, Tooltip, Area, ReferenceLine
+  XAxis, YAxis, Tooltip, Area, ReferenceLine, ReferenceArea
 } from 'recharts';
 import { Mountain } from 'lucide-react';
 
 interface GhostSyncElevationPlotProps {
   combinedData: any[];
   activeDepth?: number | null;
+  varianceWindow?: number;
 }
 
 const GhostSyncElevationPlot: React.FC<GhostSyncElevationPlotProps> = ({ 
   combinedData, 
-  activeDepth 
+  activeDepth,
+  varianceWindow = 0
 }) => {
   return (
-    <div className="h-32 bg-slate-950/60 rounded-xl border border-[#8b5e3c]/30 p-3 relative group overflow-hidden flex flex-col shadow-inner">
+    <div className="h-32 min-h-[100px] bg-slate-950/60 rounded-xl border border-[#8b5e3c]/30 p-3 relative group overflow-hidden flex flex-col shadow-inner">
       {/* HUD Header */}
       <div className="absolute top-2 left-3 z-20 flex items-center space-x-2">
         <Mountain size={10} className="text-[#8b5e3c]" />
@@ -54,9 +57,19 @@ const GhostSyncElevationPlot: React.FC<GhostSyncElevationPlotProps> = ({
               formatter={(value: any) => [`${value?.toFixed(2)}m`, 'ELEVATION']}
             />
 
-            {/* Global Crosshair Sync */}
+            {/* Global Crosshair & Aperture Sync */}
             {activeDepth !== null && (
-              <ReferenceLine x={activeDepth} stroke="#8b5e3c" strokeWidth={1} strokeOpacity={0.4} />
+              <>
+                <ReferenceLine x={activeDepth} stroke="#a855f7" strokeWidth={1} strokeOpacity={0.6} />
+                {varianceWindow > 0 && (
+                  <ReferenceArea
+                    x1={activeDepth - varianceWindow}
+                    x2={activeDepth + varianceWindow}
+                    fill="#a855f7"
+                    fillOpacity={0.1}
+                  />
+                )}
+              </>
             )}
 
             <Area 

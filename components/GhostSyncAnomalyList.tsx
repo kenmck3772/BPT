@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { AlertTriangle, Eye, EyeOff, Target } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, Target, SearchCode, ChevronRight } from 'lucide-react';
 import { SyncAnomaly } from '../hooks/useGhostSync';
 
 interface GhostSyncAnomalyListProps {
@@ -9,10 +10,11 @@ interface GhostSyncAnomalyListProps {
   isScanning: boolean;
   activeAnomalyId?: string | null;
   onHoverAnomaly?: (id: string | null) => void;
+  onInspectAnomaly?: (anomaly: SyncAnomaly) => void;
 }
 
 const GhostSyncAnomalyList: React.FC<GhostSyncAnomalyListProps> = ({ 
-  anomalies, isVisible, onToggle, isScanning, activeAnomalyId, onHoverAnomaly 
+  anomalies, isVisible, onToggle, isScanning, activeAnomalyId, onHoverAnomaly, onInspectAnomaly 
 }) => {
   return (
     <div className="glass-panel p-5 rounded-lg border border-orange-900/30 bg-slate-900/60 flex flex-col space-y-3 shadow-xl max-h-[300px] overflow-hidden">
@@ -31,9 +33,9 @@ const GhostSyncAnomalyList: React.FC<GhostSyncAnomalyListProps> = ({
             key={anomaly.id} 
             onMouseEnter={() => onHoverAnomaly?.(anomaly.id)}
             onMouseLeave={() => onHoverAnomaly?.(null)}
-            className={`p-3 bg-slate-950/80 border rounded transition-all hover:bg-slate-900 group cursor-pointer ${
+            className={`p-3 bg-slate-950/80 border rounded transition-all group ${
               activeAnomalyId === anomaly.id 
-                ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] bg-slate-900 scale-[0.98]' 
+                ? 'border-emerald-500 bg-slate-900 ring-1 ring-emerald-500/20' 
                 : anomaly.severity === 'CRITICAL' ? 'border-red-500/40' : 'border-orange-500/30'
             }`}
           >
@@ -48,13 +50,17 @@ const GhostSyncAnomalyList: React.FC<GhostSyncAnomalyListProps> = ({
              <div className={`text-[11px] font-terminal transition-colors ${activeAnomalyId === anomaly.id ? 'text-emerald-100' : 'text-emerald-100/60'}`}>
                {anomaly.startDepth.toFixed(1)}m - {anomaly.endDepth.toFixed(1)}m
              </div>
-             <div className="flex justify-between items-end mt-2">
+             <div className="flex justify-between items-center mt-3">
                 <div className={`text-[8px] uppercase font-black transition-colors ${activeAnomalyId === anomaly.id ? 'text-emerald-400' : 'text-emerald-800'}`}>
-                  AVG_DELTA: {anomaly.avgDiff.toFixed(2)} API
+                  DELTA: {anomaly.avgDiff.toFixed(2)} API
                 </div>
-                <div className={`p-1 transition-colors ${activeAnomalyId === anomaly.id ? 'text-emerald-400 animate-pulse' : 'text-emerald-900'}`}>
-                  <Target size={12} />
-                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onInspectAnomaly?.(anomaly); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-500 text-black text-[9px] font-black uppercase transition-all hover:bg-emerald-400 shadow-lg active:scale-95"
+                >
+                   <span>Deep Audit</span>
+                   <SearchCode size={12} />
+                </button>
              </div>
           </div>
         )) : (

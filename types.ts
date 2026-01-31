@@ -2,6 +2,45 @@
 export interface LogEntry {
   depth: number;
   gr: number;
+  caliper?: number;
+}
+
+export interface Task {
+  id: string;
+  label: string;
+  module: string;
+  detail: string;
+  completed: boolean;
+  dueDate?: string;
+}
+
+export type ForensicStatus = 'VERIFIED' | '[DATA_MISSING]' | '[DATA_UNREADABLE]' | '[DATA_INCOMPLETE]';
+
+export interface ForensicAuditEntry {
+  parameter: string;
+  value: string | ForensicStatus;
+  source: string;
+}
+
+export interface MetallurgySpec {
+  vendor: 'Vallourec' | 'Tenaris' | 'Sumitomo' | 'Apex';
+  connection: string;
+  grade: string;
+  yieldStrength: number;
+  gasTight: boolean;
+  thermalLimit: number;
+  stressLimit: number;
+}
+
+export interface ChromiumAudit {
+  jointNumber: number;
+  heatNumber: string;
+  nominalGrade: string;
+  measuredChromePercent: number;
+  apexVerified: boolean;
+  status: 'OPTIMAL' | 'DEGRADED' | 'DISCORDANT';
+  alphaScore: number;
+  vendorSpec?: MetallurgySpec;
 }
 
 export interface NDRProject {
@@ -16,23 +55,13 @@ export interface NDRProject {
   sha512: string;
   hasDatumShiftIssues: boolean;
   hasIntegrityRecords: boolean;
-}
-
-export interface TraumaData {
-  fingerId: number;
-  depth: number;
-  deviation: number;
-  corrosion: number;
-  temperature: number;
-  wallLoss: number;
-  waterLeakage: number;
-  stress: number;
-  bendingStress: number;
-  hoopStress: number;
-  ici: number;
-  metalLoss: number;
-  ovality: number;
-  uvIndex: number;
+  drillstringJoints?: number;
+  drillstringGrade?: string;
+  bAnnulusPressure?: string;
+  bAnnulusTemperature?: string;
+  bAnnulusPressureHistory?: number[];
+  bAnnulusTemperatureHistory?: number[];
+  bAnnulusLogs?: any[];
 }
 
 export enum ActiveModule {
@@ -44,30 +73,43 @@ export enum ActiveModule {
   VAULT = 'VAULT',
   LEGACY_RECOVERY = 'LEGACY_RECOVERY',
   NORWAY_SOVEREIGN = 'NORWAY_SOVEREIGN',
-  CHANONRY_PROTOCOL = 'CHANONRY_PROTOCOL',
-  PROTOCOL_MANUAL = 'PROTOCOL_MANUAL',
-  LOG_ROUTER = 'LOG_ROUTER',
-  PROSPECTOR = 'PROSPECTOR',
+  BASIN_AUDIT = 'BASIN_AUDIT',
+  BALLOCH_AUDIT = 'BALLOCH_AUDIT',
+  FORENSIC_AUDITOR = 'FORENSIC_AUDITOR',
+  SOVEREIGN_LEDGER = 'SOVEREIGN_LEDGER',
+  NEWS_HUB = 'NEWS_HUB',
+  FORENSIC_HARVESTER = 'FORENSIC_HARVESTER',
   CERBERUS = 'CERBERUS',
-  GATEKEEPER = 'GATEKEEPER',
-  VANGUARD = 'VANGUARD',
+  FORENSIC_LAB = 'FORENSIC_LAB',
   FORENSIC_ARCHEOLOGY = 'FORENSIC_ARCHEOLOGY',
-  CHEMISTRY_FORENSICS = 'CHEMISTRY_FORENSICS'
+  CHEMISTRY_FORENSICS = 'CHEMISTRY_FORENSICS',
+  CARDIO_FORENSICS = 'CARDIO_FORENSICS',
+  LOG_ROUTER = 'LOG_ROUTER',
+  GATEKEEPER = 'GATEKEEPER',
+  CHANONRY_PROTOCOL = 'CHANONRY_PROTOCOL',
+  PROSPECTOR = 'PROSPECTOR',
+  VANGUARD = 'VANGUARD',
+  PROTOCOL_MANUAL = 'PROTOCOL_MANUAL',
+  FORENSIC_VISION = 'FORENSIC_VISION',
+  NINIAN_TALLY = 'NINIAN_TALLY'
 }
 
 export enum TraumaLayer {
+  PRESSURE = 'PRESSURE',
+  THERMAL = 'THERMAL',
+  EYERUNE_TRUTH = 'EYERUNE_TRUTH',
   DEVIATION = 'DEVIATION',
-  CORROSION = 'CORROSION',
-  TEMPERATURE = 'TEMPERATURE',
-  WALL_LOSS = 'WALL_LOSS',
-  WATER_LEAKAGE = 'WATER_LEAKAGE',
-  STRESS = 'STRESS',
-  BENDING_STRESS = 'BENDING_STRESS',
-  HOOP_STRESS = 'HOOP_STRESS',
-  ICI = 'ICI',
-  METAL_LOSS = 'METAL_LOSS',
-  OVALITY = 'OVALITY',
-  UV_INDEX = 'UV_INDEX'
+  VIBRATION = 'VIBRATION'
+}
+
+export interface TraumaData {
+  depth: number;
+  fingerId: number;
+  stress: number;
+  temperature: number;
+  eyeruneTruth: number;
+  deviation: number;
+  vibration: number;
 }
 
 export interface AnalysisResult {
@@ -84,11 +126,54 @@ export interface AnalysisResult {
   region?: string;
 }
 
+export interface AnnulusLogEntry {
+  timestamp: string;
+  pressure: number;
+  temperature?: number;
+  type: string;
+}
+
+export interface SovereignVetoReport {
+  vetoSummary: string;
+  authorTruth: string;
+  digitalClaim: string;
+  forensicDelta: string;
+  forensicSnapshots: Array<{
+    pageNumber: string;
+    originalValue: string;
+    modernClaim: string;
+    variance: string;
+  }>;
+  vetoLogic: string;
+  bAnnulusPressure?: string;
+  bAnnulusTemperature?: string;
+  bAnnulusLogs?: AnnulusLogEntry[];
+}
+
+export type RiskProfile = 'ARREARS_CRITICAL' | 'SUSPENDED_EXTENDED' | 'ORPHAN_ASSET';
+export type AssetType = 'Platform-Based' | 'Subsea Ghost';
+
+export interface GhostWellRecord {
+  uwi: string;
+  operator: string;
+  assetType: AssetType;
+  riskProfile: RiskProfile;
+  status: string;
+  suspensionExpiry: string | null;
+  lastIntegrityCheck: string | null;
+  verticalDatum: string | null;
+  arrearsDays: number;
+  technicalRisk: string;
+  isArrearsCritical: boolean;
+  scrapedSource?: string;
+  sitp?: string;
+  metallurgy?: MetallurgySpec;
+}
+
 export interface ForensicAnalysis {
-  mode: 'FORENSICS';
-  file_type: 'LAS' | 'PDF' | 'DLIS' | 'CSV' | 'UNKNOWN';
-  confidence: 'High' | 'Low';
-  sigmaScore?: number;
+  mode: string;
+  file_type: string;
+  confidence: string;
   metadata: {
     well_name: string | null;
     api_number: string | null;
@@ -106,19 +191,58 @@ export interface ProspectorBrief {
   raw_intelligence: string;
 }
 
-// Added missing types for constants.tsx and other components
-export interface PressureData {
+export interface FullForensicReportData {
+  wellName: string;
+  uwi: string;
+  datumAudit: {
+    legacyKB: string;
+    modernMSL: string;
+    delta: string;
+    narrative: string;
+  };
+  octgTally: {
+    summary: string;
+    joints: Array<{
+      id: number;
+      nominalGrade: string;
+      recoveredGrade: string;
+      decayDetected: boolean;
+      millCert: string;
+    }>;
+  };
+  integrityLog: {
+    chemicalHistory: Array<{
+      date: string;
+      operation: string;
+      chemical: string;
+    }>;
+    pressureAnalysis: string;
+  };
+  verificationGate: {
+    apexJobNumber: string;
+    millCertIDs: string[];
+    notary: string;
+  };
+}
+
+export interface BarrierEvent {
   timestamp: string;
+  type: 'TOPUP' | 'SQUEEZE' | 'TEST' | 'BREACH' | 'INFO';
   pressure: number;
-  isHistorical?: boolean;
+  comment: string;
+}
+
+export interface VaultConfig {
+  tenantId: string;
+  clientId: string;
+  siteId: string;
+  listWellMetadata: string;
 }
 
 export interface TubingItem {
   id: number;
   type: string;
-  od_in: number;
   id_in: number;
-  weight_lbft: number;
   grade: string;
   length_m: number;
   cumulative_m: number;
@@ -128,47 +252,57 @@ export interface TubingItem {
 export interface WellReport {
   reportId: string;
   date: string;
-  opType: string;
   summary: string;
   eodDepth_m: number;
 }
 
-export interface BarrierEvent {
-  id: string;
-  date: string;
-  type: 'SQUEEZE' | 'TEST' | 'TOPUP' | 'BREACH';
-  annulus: string;
-  summary: string;
-  severity: 'INFO' | 'MAINTENANCE' | 'CRITICAL';
-  volume?: number;
-  unit?: string;
+export interface BasinAuditNode {
+  region: string;
+  assets: {
+    type: AssetType;
+    riskProfiles: {
+      profile: RiskProfile;
+      wells: GhostWellRecord[];
+    }[];
+  }[];
 }
 
-export interface MissionTarget {
-  REGION: string;
-  ASSET: string;
-  rig_site: string;
-  BLOCKS: string[];
-  WELLS?: string[];
-  ANOMALY_TYPE: string;
-  DATA_PORTAL: string;
-  PRIORITY: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export interface BallochThermalAudit {
+  correlationCoefficient: number;
+  phaseLagMinutes: number;
+  thermalElasticity: string;
+  scaleFillMagnitude: number;
+  auditVerdict: string;
+  regulatoryVetoLogic: string;
+  ddrArtifacts: Array<{
+    timestamp: string;
+    finding: string;
+    author: string;
+    status: string;
+  }>;
+  hysteresisStats: {
+    minPressure: number;
+    maxPressure: number;
+    minTemp: number;
+    maxTemp: number;
+  };
 }
 
-export interface MissionConfig {
-  MISSION_ID: string;
-  STATUS: string;
-  TIMESTAMP: string;
-  OPERATOR: string;
-  TARGETS: MissionTarget[];
+export interface AnomalyDeepAudit {
+  nature: string;
+  potentialCauses: string[];
+  regulatoryConstraint: string;
+  remediation: string;
+  technicalDeduction: string;
+  merUkImpact: string;
 }
 
-export interface TraumaEvent {
-  timestamp: string;
-  layer: TraumaLayer;
-  depth: number;
-  value: number;
-  unit: string;
-  severity: 'CRITICAL' | 'WARNING';
-  description: string;
+export interface NinianTallyEntry {
+  slot: string;
+  type: string;
+  casingGrade: string;
+  weight: number;
+  linerGrade: string;
+  ndrRefId: string;
+  apexScore: number;
 }

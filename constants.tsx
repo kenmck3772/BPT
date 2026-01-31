@@ -1,194 +1,227 @@
 
-import { LogEntry, TraumaData, PressureData, NDRProject, TubingItem, WellReport, BarrierEvent, MissionConfig } from './types';
+import { GhostWellRecord, AssetType, RiskProfile, BasinAuditNode, TraumaData, NDRProject, TubingItem, WellReport, NinianTallyEntry } from './types';
 
-// Global Mission Hub Data (Ghost Hunter Alpha)
-export const GHOST_HUNTER_MISSION: MissionConfig = {
-  "MISSION_ID": "GHOST_HUNTER_ALPHA",
-  "STATUS": "ACTIVE",
-  "TIMESTAMP": "2026-01-23T09:00:00Z",
-  "OPERATOR": "BRAHAN_SEER",
-  "TARGETS": [
-    {
-      "REGION": "NORTH_SEA",
-      "ASSET": "NINIAN_CENTRAL",
-      "rig_site": "TBD_NINIAN_SITE",
-      "BLOCKS": ["3/3"],
-      "WELLS": ["N-42"],
-      "ANOMALY_TYPE": "RIBBONS_OF_BLACK_RISK",
-      "DATA_PORTAL": "NSTA_NDR",
-      "PRIORITY": "CRITICAL"
-    },
-    {
-      "REGION": "NORWAY_SOVEREIGN",
-      "ASSET": "STATFJORD",
-      "rig_site": "TBD_STATFJORD_SITE",
-      "BLOCKS": ["33/9"],
-      "ANOMALY_TYPE": "RADIOACTIVE_SAND_GHOST",
-      "DATA_PORTAL": "NPD_FACTPAGES",
-      "PRIORITY": "CRITICAL"
-    },
-    {
-      "REGION": "NORWAY_SOVEREIGN",
-      "ASSET": "GULLFAKS",
-      "rig_site": "TBD_GULLFAKS_SITE",
-      "BLOCKS": ["34/10"],
-      "ANOMALY_TYPE": "FAULT_SHADOW_VELOCITY",
-      "DATA_PORTAL": "NPD_FACTPAGES",
-      "PRIORITY": "CRITICAL"
-    },
-    {
-      "REGION": "AUSTRALIA_NW_SHELF",
-      "ASSET": "CARNARVON_BASIN",
-      "rig_site": "TBD_GOODWYN_SITE",
-      "BLOCKS": ["WA-1-P", "WA-28-L"],
-      "WELLS": ["RANKIN-12", "GOODWYN-SOUTH-3", "PERSEUS-2"],
-      "ANOMALY_TYPE": "VELOCITY_PUSH_DOWN",
-      "DATA_PORTAL": "NOPIMS_FED",
-      "PRIORITY": "CRITICAL"
-    },
-    {
-      "REGION": "AUSTRALIA",
-      "ASSET": "COOPER_BASIN_TALIA",
-      "rig_site": "TBD_TALIA_SITE",
-      "BLOCKS": ["ATP_2021", "PEL_106"],
-      "WELLS": ["TALIA-1", "VALI-2"],
-      "ANOMALY_TYPE": "GAS_GHOSTING",
-      "DATA_PORTAL": "PEPS_SA",
-      "PRIORITY": "HIGH"
-    }
+export const GHOST_HUNTER_MISSION = {
+  TARGETS: [
+    { ASSET: 'Harris_H1', PRIORITY: 'CRITICAL' as const, ANOMALY_TYPE: 'Datum Shift', DATA_PORTAL: 'NSTA_NDR', rig_site: 'Harris Alpha' },
+    { ASSET: 'Heather_H12', PRIORITY: 'HIGH' as const, ANOMALY_TYPE: 'Metallurgy Conflict', DATA_PORTAL: 'NSTA_NDR', rig_site: 'Heather Alpha' },
+    { ASSET: 'Balloch_B2', PRIORITY: 'HIGH' as const, ANOMALY_TYPE: 'Thermal Pulse', DATA_PORTAL: 'NSTA_NDR', rig_site: 'Balloch Subsea' },
+    { ASSET: 'Culzean_C1', PRIORITY: 'HIGH' as const, ANOMALY_TYPE: 'HPHT Stress', DATA_PORTAL: 'VALLOUREC_VAM', rig_site: 'Culzean FSO' },
+    { ASSET: 'Buzzard_P4', PRIORITY: 'CRITICAL' as const, ANOMALY_TYPE: 'Production Stress', DATA_PORTAL: 'TENARIS_BLUE', rig_site: 'Buzzard P1' }
   ]
 };
 
-// Mock Log Data for Ghost-Sync
-export const MOCK_BASE_LOG: LogEntry[] = Array.from({ length: 100 }, (_, i) => ({
-  depth: 1200 + i * 2,
-  gr: 40 + Math.sin(i * 0.2) * 20 + Math.random() * 10
+export const MOCK_TRAUMA_DATA: TraumaData[] = Array.from({ length: 100 }, (_, i) => ({
+  depth: 1200 + i * 0.5,
+  fingerId: (i % 40) + 1,
+  deviation: 2 + Math.random() * 2,
+  temperature: 20 + Math.random() * 10,
+  stress: 100 + Math.random() * 50,
+  eyeruneTruth: Math.random(),
+  vibration: Math.random()
 }));
 
-export const MOCK_GHOST_LOG: LogEntry[] = MOCK_BASE_LOG.map(entry => ({
-  depth: entry.depth + 14.5, // 14.5m offset
-  gr: entry.gr + (Math.random() - 0.5) * 5
+export const MOCK_PRESSURE_DATA = Array.from({ length: 24 }, (_, i) => ({
+  timestamp: `${String(i).padStart(2, '0')}:00`,
+  pressure: 800 + i * 5 + Math.random() * 10
 }));
 
-// Mock Elevation Data (Seabed / Topography profile)
-export const MOCK_ELEVATION_DATA = MOCK_BASE_LOG.map((entry, i) => ({
-  depth: entry.depth,
-  elevation: -450 + Math.cos(i * 0.1) * 15 + Math.random() * 2
+export const MOCK_HISTORICAL_BARRIER_LOGS = [];
+export const MOCK_SCAVENGED_PRESSURE_TESTS = Array.from({ length: 24 }, (_, i) => ({
+  timestamp: `${String(i).padStart(2, '0')}:00`,
+  pressure: 750 + i * 4
 }));
 
-// Mock Historical Barrier Records
-export const MOCK_HISTORICAL_BARRIER_LOGS: BarrierEvent[] = [
-  { id: 'BE-2012-01', date: '2012-04-12', type: 'SQUEEZE', annulus: 'A', summary: 'Scale squeeze operation. Injected 50bbl inhibitor.', severity: 'INFO' },
-  { id: 'BE-2015-04', date: '2015-08-20', type: 'TEST', annulus: 'A', summary: 'Annual barrier test. 5000 PSI / 30 mins. PASSED.', severity: 'MAINTENANCE' },
-  { id: 'BE-2018-09', date: '2018-11-02', type: 'TOPUP', annulus: 'B', summary: 'B-Annulus low pressure. Topped up with 15bbl brine.', severity: 'MAINTENANCE', volume: 15, unit: 'bbl' },
-  { id: 'BE-2021-02', date: '2021-03-15', type: 'BREACH', annulus: 'A', summary: 'First sustained pressure detected. Cross-flow suspect.', severity: 'CRITICAL' },
-  { id: 'BE-2023-11', date: '2023-12-05', type: 'TOPUP', annulus: 'A', summary: 'Aggressive top-up needed. Delta P rising.', severity: 'CRITICAL', volume: 45, unit: 'bbl' }
+export const MOCK_BALLOCH_THERMAL_CORRELATION = Array.from({ length: 48 }, (_, i) => ({
+  timestamp: `${String(Math.floor(i/2)).padStart(2, '0')}:${(i%2)*30}`,
+  pressure: 850 + Math.sin(i * 0.2) * 50,
+  temperature: 30 + Math.sin(i * 0.2 - 0.5) * 10,
+  isAnchor: i % 12 === 0
+}));
+
+export const MOCK_NDR_PROJECTS: NDRProject[] = [
+  { 
+    projectId: 'PRJ-HARRIS-001', name: 'Harris_H1_Recon', quadrant: '210/24a', status: 'RELEASED', 
+    releaseDate: '2023-11-15', type: 'WELL', wellboreType: 'VERTICAL', sizeGb: 2.4, 
+    sha512: 'A9B8C7D6...', hasDatumShiftIssues: true, hasIntegrityRecords: true 
+  },
+  { 
+    projectId: 'PRJ-HEATHER-012', name: 'Heather_H12_Audit', quadrant: '2/5', status: 'RELEASED', 
+    releaseDate: '2023-10-12', type: 'WELL', wellboreType: 'DIRECTIONAL', sizeGb: 1.8, 
+    sha512: 'F1E2D3C4...', hasDatumShiftIssues: false, hasIntegrityRecords: true 
+  },
+  { 
+    projectId: 'PRJ-BALLOCH-002', name: 'Balloch_B2_Study', quadrant: '15/20a', status: 'RELEASED', 
+    releaseDate: '2026-01-20', type: 'WELL', wellboreType: 'SUBSEA', sizeGb: 3.1, 
+    sha512: 'E5D4C3B2...', hasDatumShiftIssues: false, hasIntegrityRecords: true 
+  }
 ];
 
-export const MOCK_SCAVENGED_PRESSURE_TESTS: PressureData[] = [
-  { timestamp: '00:00', pressure: 150, isHistorical: true },
-  { timestamp: '04:00', pressure: 250, isHistorical: true },
-  { timestamp: '08:00', pressure: 350, isHistorical: true },
-  { timestamp: '12:00', pressure: 450, isHistorical: true },
-  { timestamp: '12:01', pressure: 150, isHistorical: true },
-  { timestamp: '16:00', pressure: 250, isHistorical: true },
-  { timestamp: '20:00', pressure: 350, isHistorical: true },
-  { timestamp: '23:59', pressure: 450, isHistorical: true },
-];
-
-// Mock Tubing Tally
-export const MOCK_TUBING_TALLY: TubingItem[] = [
-  { id: 1, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.05, cumulative_m: 12.05, status: 'VALID' },
-  { id: 2, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.10, cumulative_m: 24.15, status: 'VALID' },
-  { id: 3, type: 'SSSV (Safety Valve)', od_in: 4.5, id_in: 2.8, weight_lbft: 12.5, grade: 'X-95', length_m: 2.45, cumulative_m: 26.60, status: 'VALID' },
-  { id: 4, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.08, cumulative_m: 38.68, status: 'DISCREPANT' },
-  { id: 5, type: 'Crossover', od_in: 3.5, id_in: 2.7, weight_lbft: 10.1, grade: 'L80', length_m: 0.85, cumulative_m: 39.53, status: 'VALID' },
-  { id: 6, type: 'Tubing', od_in: 3.5, id_in: 2.992, weight_lbft: 9.2, grade: 'L80', length_m: 12.12, cumulative_m: 51.65, status: 'VALID' },
-];
+export const MOCK_TUBING_TALLY: TubingItem[] = Array.from({ length: 20 }, (_, i) => ({
+  id: i + 1,
+  type: 'Tubing',
+  id_in: 3.958,
+  grade: 'L-80',
+  length_m: 9.5 + Math.random() * 0.2,
+  cumulative_m: (i + 1) * 9.6,
+  status: i === 4 ? 'DISCREPANT' as const : 'VALID' as const
+}));
 
 export const MOCK_INTERVENTION_REPORTS: WellReport[] = [
-  { reportId: 'DDR-2024-001', date: '2024-05-10', opType: 'INTERVENTION', summary: 'Pulled completion to 1200m. Identified heavy scale build-up. Commenced tally for re-run.', eodDepth_m: 1200.0 },
-  { reportId: 'DDR-2024-002', date: '2024-05-11', opType: 'COMPLETION', summary: 'Running in hole with new L80 completion string. Tally mismatch noted at joint #4.', eodDepth_m: 1245.5 },
+  { reportId: 'EOWR-2013-001', date: '2013-05-12', summary: 'End of Well Report - Ninian', eodDepth_m: 2450.5 },
+  { reportId: 'DDR-2024-042', date: '2024-01-20', summary: 'Daily Drilling Report - Harris', eodDepth_m: 1250.0 }
 ];
 
-// Mock NDR Projects
-export const MOCK_NDR_PROJECTS: NDRProject[] = [
+export const MOCK_BASE_LOG = Array.from({ length: 200 }, (_, i) => ({
+  depth: 1200 + i * 0.5,
+  gr: 40 + Math.sin(i * 0.1) * 30 + Math.random() * 5
+}));
+
+export const MOCK_GHOST_LOG = Array.from({ length: 200 }, (_, i) => ({
+  depth: 1200 + i * 0.5 + 4.05,
+  gr: 40 + Math.sin(i * 0.1) * 30 + Math.random() * 5
+}));
+
+export const MOCK_ELEVATION_DATA = Array.from({ length: 200 }, (_, i) => ({
+  depth: 1200 + i * 0.5,
+  elevation: -1150 + Math.sin(i * 0.05) * 20
+}));
+
+export const MOCK_BALLOCH_LOG = Array.from({ length: 100 }, (_, i) => ({
+  depth: 2800 + i * 0.5,
+  gr: 60 + Math.cos(i * 0.2) * 20
+}));
+
+export const MOCK_BALLOCH_GHOST_LOG = Array.from({ length: 100 }, (_, i) => ({
+  depth: 2800 + i * 0.5 + 2.1,
+  gr: 60 + Math.cos(i * 0.2) * 20
+}));
+
+export const IRON_TRUTH_REGISTRY = [
+  { 
+    id: 'HARRIS_H1', 
+    description: 'Harris H1 Primary Artifacts', 
+    entries: [
+      { parameter: 'KB_ELEVATION', value: '31.2m', source: 'EOWR_1994' },
+      { parameter: 'DATUM_REF', value: 'Kelly Bushing', source: 'EOWR_1994' }
+    ] 
+  },
+  { 
+    id: 'HEATHER_H12', 
+    description: 'Heather H12 Metallurgy Audit', 
+    entries: [
+      { parameter: 'CHROME_TARGET', value: '13%', source: 'APEX_MANIFEST_4459' }
+    ] 
+  }
+];
+
+export const MOCK_HEATHER_13CR_TALLY = Array.from({ length: 15 }, (_, i) => ({
+  jointNumber: i + 1,
+  heatNumber: `HT-${1000 + i}`,
+  nominalGrade: '13Cr',
+  measuredChromePercent: i === 7 || i === 8 ? 8.5 : 12.8 + Math.random() * 0.5,
+  apexVerified: true,
+  status: i === 7 || i === 8 ? 'DISCORDANT' as const : 'OPTIMAL' as const,
+  alphaScore: i === 7 || i === 8 ? 0.42 : 0.98
+}));
+
+export const MOCK_BASIN_AUDIT_DATA: BasinAuditNode[] = [
   {
-    projectId: 'THISTLE1978well0001',
-    name: 'Thistle A7 Legacy',
-    quadrant: '211',
-    status: 'RELEASED',
-    releaseDate: '1985-06-01',
-    type: 'well',
-    wellboreType: 'VERTICAL',
-    sizeGb: 1.2,
-    sha512: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    hasDatumShiftIssues: true,
-    hasIntegrityRecords: true
+    region: "Northern North Sea",
+    assets: [
+      {
+        type: "Platform-Based",
+        riskProfiles: [
+          {
+            profile: "ARREARS_CRITICAL",
+            wells: [
+              {
+                uwi: "2/5-H12", 
+                operator: "EnQuest", 
+                assetType: "Platform-Based", 
+                riskProfile: "ARREARS_CRITICAL",
+                status: "Heather Alpha", 
+                suspensionExpiry: "2020-05-12", 
+                lastIntegrityCheck: "2019-11-04",
+                verticalDatum: "13Cr L-80 Modified", 
+                arrearsDays: 1350, 
+                technicalRisk: "Trace 13Cr metallurgy joints recovery required.", 
+                isArrearsCritical: true,
+                scrapedSource: "APEX_TALLY_OCR_1991", 
+                sitp: "450 PSI"
+              }
+            ]
+          }
+        ]
+      }
+    ]
   },
   {
-    projectId: 'NINIAN_N42_FORENSIC',
-    name: 'Ninian Central N-42 Audit',
-    quadrant: '3/3',
-    status: 'RELEASED',
-    releaseDate: '2026-01-22',
-    type: 'well',
-    wellboreType: 'DIRECTIONAL',
-    sizeGb: 0.8,
-    sha512: 'f8d2e1a9b...ASPHALTENE_UNSTABLE',
-    hasDatumShiftIssues: false,
-    hasIntegrityRecords: true
+    region: "Central North Sea",
+    assets: [
+      {
+        type: "Subsea Ghost",
+        riskProfiles: [
+          {
+            profile: "ARREARS_CRITICAL",
+            wells: [
+              {
+                uwi: "22/25a-C1", 
+                operator: "TotalEnergies", 
+                assetType: "Subsea Ghost", 
+                riskProfile: "ARREARS_CRITICAL",
+                status: "Culzean Field", 
+                suspensionExpiry: "2025-01-15", 
+                lastIntegrityCheck: "2024-06-20",
+                verticalDatum: "VAM-21 HPHT Seal Locked", 
+                arrearsDays: 12, 
+                technicalRisk: "HPHT 15k PSI Seal Verification Required.", 
+                isArrearsCritical: true,
+                scrapedSource: "VALLOUREC_VAM_CERT_2024", 
+                sitp: "14800 PSI"
+              },
+              {
+                uwi: "20/6-P4", 
+                operator: "CNOOC", 
+                assetType: "Subsea Ghost", 
+                riskProfile: "ARREARS_CRITICAL",
+                status: "Buzzard Field", 
+                suspensionExpiry: "2023-11-12", 
+                lastIntegrityCheck: "2022-10-04",
+                verticalDatum: "TenarisBlue High-Stress", 
+                arrearsDays: 412, 
+                technicalRisk: "Sustained B-Annulus recharge in H2S service.", 
+                isArrearsCritical: true,
+                scrapedSource: "TENARIS_BLUE_MANIFEST_2022", 
+                sitp: "3200 PSI"
+              },
+              {
+                uwi: "15/20a-B2", 
+                operator: "EnQuest", 
+                assetType: "Subsea Ghost", 
+                riskProfile: "ARREARS_CRITICAL",
+                status: "Balloch Field", 
+                suspensionExpiry: "2026-06-30", 
+                lastIntegrityCheck: "2025-11-01",
+                verticalDatum: "Balloch Special", 
+                arrearsDays: 0, 
+                technicalRisk: "Diurnal thermal phase-lock detected.", 
+                isArrearsCritical: false,
+                scrapedSource: "BALLOCH_DDR_2026", 
+                sitp: "850 PSI"
+              }
+            ]
+          }
+        ]
+      }
+    ]
   }
 ];
 
-// Mock Trauma Data for 3D Node
-export const MOCK_TRAUMA_DATA: TraumaData[] = [];
-for (let d = 1240; d < 1250; d += 0.5) {
-  for (let f = 1; f <= 40; f++) {
-    let deviation = Math.random() * 0.5;
-    let corrosion = Math.random() * 15; 
-    let temperature = 60 + (d - 1240) * 2 + Math.random() * 5; 
-    let wallLoss = Math.random() * 5; 
-    let waterLeakage = Math.random() * 5; 
-    let stress = Math.random() * 10; 
-    let bendingStress = Math.random() * 8;
-    let hoopStress = Math.random() * 12;
-    let ici = Math.random() * 20; 
-    let metalLoss = Math.random() * 8;
-    let ovality = Math.random() * 2;
-    let uvIndex = 1 + Math.random() * 3;
-
-    // Simulate Anomaly coupling
-    if (d === 1245.5 && f > 10 && f < 15) {
-      deviation = 4.8;
-      corrosion = 72; 
-      temperature = 88; 
-      wallLoss = 22; 
-      waterLeakage = 92; 
-      stress = 88; 
-      bendingStress = 95;
-      hoopStress = 98;
-      ici = 95; 
-      metalLoss = 28;
-      ovality = 5.5;
-      uvIndex = 12.4;
-    }
-    
-    MOCK_TRAUMA_DATA.push({ 
-      fingerId: f, depth: d, deviation, corrosion, temperature, wallLoss, 
-      waterLeakage, stress, bendingStress, hoopStress, ici, metalLoss, ovality, uvIndex 
-    });
-  }
-}
-
-// Mock Pressure Data for Sawtooth Pulse
-export const MOCK_PRESSURE_DATA: PressureData[] = [
-  { timestamp: '00:00', pressure: 250 },
-  { timestamp: '04:00', pressure: 450 },
-  { timestamp: '08:00', pressure: 650 },
-  { timestamp: '12:00', pressure: 850 },
-  { timestamp: '12:01', pressure: 250 },
-  { timestamp: '16:00', pressure: 450 },
-  { timestamp: '20:00', pressure: 650 },
-  { timestamp: '23:59', pressure: 850 },
+export const MOCK_NINIAN_TALLY: NinianTallyEntry[] = [
+  { slot: "N14", type: "Suspended", casingGrade: "Q-125", weight: 65.7, linerGrade: "13Cr-L80", ndrRefId: "NDR-NIN-N14", apexScore: 9 },
+  { slot: "N18", type: "Producer", casingGrade: "P-110", weight: 47.0, linerGrade: "13Cr-110", ndrRefId: "NDR-NIN-N18", apexScore: 5 },
+  { slot: "N21", type: "Injector", casingGrade: "P-110", weight: 60.7, linerGrade: "13Cr-80", ndrRefId: "NDR-NIN-N21", apexScore: 3 },
+  { slot: "N24", type: "Suspended", casingGrade: "P-110", weight: 53.5, linerGrade: "13Cr-S110", ndrRefId: "NDR-NIN-N24", apexScore: 10 },
+  { slot: "N29", type: "Producer", casingGrade: "P-110", weight: 47.0, linerGrade: "13Cr-L80", ndrRefId: "NDR-NIN-N29", apexScore: 6 }
 ];

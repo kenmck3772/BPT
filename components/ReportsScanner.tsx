@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   FileSearch, Table, AlertTriangle, FileText, 
@@ -6,7 +5,7 @@ import {
   Target, ShieldAlert, Dna, Ruler, HardDriveDownload,
   History, X, Clock, Database, ChevronRight, Trash2,
   Binary, Fingerprint, ShieldCheck, AlertOctagon, 
-  Eye, CornerRightDown
+  Eye, CornerRightDown, Maximize2, Minimize2
 } from 'lucide-react';
 import { MOCK_TUBING_TALLY, MOCK_INTERVENTION_REPORTS } from '../constants';
 import { TubingItem, WellReport } from '../types';
@@ -21,7 +20,12 @@ interface ScanLogEntry {
   summary: string;
 }
 
-const ReportsScanner: React.FC = () => {
+interface ReportsScannerProps {
+  isFocused?: boolean;
+  onToggleFocus?: () => void;
+}
+
+const ReportsScanner: React.FC<ReportsScannerProps> = ({ isFocused, onToggleFocus }) => {
   const [selectedReport, setSelectedReport] = useState<WellReport>(MOCK_INTERVENTION_REPORTS[0]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
@@ -148,6 +152,11 @@ const ReportsScanner: React.FC = () => {
             {isScanning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
             <span>Audit_DDR</span>
           </button>
+          {onToggleFocus && (
+            <button onClick={onToggleFocus} aria-label="Toggle Focus Mode" className="p-2 text-emerald-900 hover:text-[#00FF41] transition-all ml-2">
+              {isFocused ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
+            </button>
+          )}
         </div>
       </div>
 

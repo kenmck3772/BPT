@@ -1,15 +1,20 @@
-
 import React, { useState } from 'react';
 import { 
   Database, FileCode, Search, RefreshCw, 
   ShieldCheck, ShieldAlert, Binary, Cpu, 
   Terminal, History, ExternalLink, Loader2,
-  Table, ChevronRight, HardDrive, Info
+  Table, ChevronRight, HardDrive, Info,
+  Maximize2, Minimize2
 } from 'lucide-react';
 import { analyzeLogHeader } from '../services/geminiService';
 import { ForensicAnalysis } from '../types';
 
-const LogRouter: React.FC = () => {
+interface LogRouterProps {
+  isFocused?: boolean;
+  onToggleFocus?: () => void;
+}
+
+const LogRouter: React.FC<LogRouterProps> = ({ isFocused, onToggleFocus }) => {
   const [inputText, setInputText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<ForensicAnalysis | null>(null);
@@ -65,6 +70,11 @@ const LogRouter: React.FC = () => {
            <div className="bg-slate-950 px-4 py-2 border border-emerald-900/40 rounded">
               <span className="text-[10px] text-emerald-500 font-mono tracking-widest">CERBERUS: {validationPassed === null ? 'WAITING' : validationPassed ? 'PASSED' : 'FAILED'}</span>
            </div>
+           {onToggleFocus && (
+              <button onClick={onToggleFocus} aria-label="Toggle Focus Mode" className="p-2 text-emerald-900 hover:text-[#00FF41] transition-all ml-2">
+                {isFocused ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
+              </button>
+           )}
         </div>
       </header>
 

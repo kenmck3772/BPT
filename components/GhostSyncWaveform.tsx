@@ -1,10 +1,9 @@
-
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { 
-  ResponsiveContainer, LineChart, CartesianGrid, 
-  XAxis, YAxis, Tooltip, Line, Legend, Scatter, Area, ReferenceArea
+  ResponsiveContainer, ComposedChart, CartesianGrid, 
+  XAxis, YAxis, Tooltip, Line, Legend, Scatter, Area, ReferenceArea, ReferenceLine
 } from 'recharts';
-import { Activity, Zap, TrendingDown, Mountain, Fingerprint } from 'lucide-react';
+import { Activity, Zap, TrendingDown, Mountain, Fingerprint, Maximize, RotateCcw, Move, Search as SearchIcon, Crosshair, ZoomIn, ZoomOut } from 'lucide-react';
 import { SignalMetadata, SyncAnomaly } from '../hooks/useGhostSync';
 
 interface GhostSyncWaveformProps {
@@ -14,6 +13,8 @@ interface GhostSyncWaveformProps {
   activeAnomalyId?: string | null;
   anomalies?: SyncAnomaly[];
   varianceWindow?: number;
+  zoomRange: { left: number | string; right: number | string };
+  onZoomRangeChange: (range: { left: number | string; right: number | string }) => void;
 }
 
 const GhostSyncWaveform: React.FC<GhostSyncWaveformProps> = ({ 
@@ -22,239 +23,214 @@ const GhostSyncWaveform: React.FC<GhostSyncWaveformProps> = ({
   ghostLabel,
   activeAnomalyId = null,
   anomalies = [],
-  varianceWindow = 5
+  varianceWindow = 5,
+  zoomRange,
+  onZoomRangeChange
 }) => {
   const [activeDepth, setActiveDepth] = useState<number | null>(null);
-
-  const activeAnomaly = useMemo(() => 
-    anomalies.find(a => a.id === activeAnomalyId),
-    [activeAnomalyId, anomalies]
-  );
-
-  const isElevationVisible = signals.find(s => s.id === 'SIG-ELEV')?.visible ?? false;
-  const elevColor = signals.find(s => s.id === 'SIG-ELEV')?.color ?? '#8b5e3c';
-
-  const activeSegmentData = useMemo(() => {
-    if (!activeAnomaly) return [];
-    return combinedData.filter(d => 
-      d.depth >= activeAnomaly.startDepth && d.depth <= activeAnomaly.endDepth
-    );
-  }, [combinedData, activeAnomaly]);
+  const [interactionMode, setInteractionMode] = useState<'ZOOM' | 'PAN'>('ZOOM');
+  const [isHoveringChart, setIsHoveringChart] = useState(false);
+  
+  const [isDragging, setIsDragging] = useState(false);
+  const [refAreaLeft, setRefAreaLeft] = useState<number | string>('');
+  const [refAreaRight, setRefAreaRight] = useState<number | string>('');
+  
+  const [panAnchorDepth, setPanAnchorDepth] = useState<number | null>(null);
+  const [panInitialRange, setPanInitialRange] = useState<{l: number, r: number} | null>(null);
 
   const handleMouseMove = (state: any) => {
-    if (state && state.activePayload && state.activePayload.length > 0) {
+    if (!state) return;
+    
+    if (state.activePayload && state.activePayload.length > 0) {
       const depth = state.activePayload[0].payload.depth;
-      setActiveDepth(depth);
+      if (!isNaN(depth)) setActiveDepth(depth);
+    }
+
+    if (interactionMode === 'ZOOM' && isDragging) {
+      setRefAreaRight(state.activeLabel);
+    } 
+    else if (interactionMode === 'PAN' && isDragging && panAnchorDepth !== null && panInitialRange !== null) {
+      const currentDepth = Number(state.activeLabel);
+      if (isNaN(currentDepth)) return;
+      
+      const delta = panAnchorDepth - currentDepth;
+      if (!isNaN(delta)) {
+        onZoomRangeChange({
+          left: panInitialRange.l + delta,
+          right: panInitialRange.r + delta
+        });
+      }
     }
   };
 
-  const handleMouseLeave = () => {
-    setActiveDepth(null);
+  const handleMouseDown = (e: any) => {
+    if (!e || !e.activeLabel) return;
+    setIsDragging(true);
+    
+    if (interactionMode === 'ZOOM') {
+      setRefAreaLeft(e.activeLabel);
+    } else {
+      const depth = Number(e.activeLabel);
+      if (!isNaN(depth)) {
+        setPanAnchorDepth(depth);
+        const dataMin = combinedData[0]?.depth || 0;
+        const dataMax = combinedData[combinedData.length - 1]?.depth || 0;
+        setPanInitialRange({
+          l: zoomRange.left === 'dataMin' ? dataMin : Number(zoomRange.left),
+          r: zoomRange.right === 'dataMax' ? dataMax : Number(zoomRange.right)
+        });
+      }
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (interactionMode === 'ZOOM' && isDragging) {
+      let [l, r] = [refAreaLeft, refAreaRight];
+      if (l !== r && r !== '') {
+        const ln = Number(l);
+        const rn = Number(r);
+        if (!isNaN(ln) && !isNaN(rn)) {
+          if (ln > rn) [l, r] = [r, l];
+          onZoomRangeChange({ left: l, right: r });
+        }
+      }
+      setRefAreaLeft('');
+      setRefAreaRight('');
+    }
+    setIsDragging(false);
+    setPanAnchorDepth(null);
+    setPanInitialRange(null);
+  };
+
+  const resetZoom = () => {
+    onZoomRangeChange({ left: 'dataMin', right: 'dataMax' });
+  };
+
+  const renderScanningDot = (props: any) => {
+    const { cx, cy, stroke } = props;
+    if (!cy) return null;
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={10} fill={stroke} opacity={0.3}>
+          <animate attributeName="r" from="4" to="20" dur="0.6s" repeatCount="indefinite" />
+          <animate attributeName="opacity" from="0.4" to="0" dur="0.6s" repeatCount="indefinite" />
+        </circle>
+        <circle cx={cx} cy={cy} r={3} fill={stroke} stroke="#ffffff" strokeWidth={1} />
+      </g>
+    );
   };
 
   return (
-    <div className="flex-1 min-h-0 bg-[#020617] rounded-xl border border-emerald-500/20 p-4 relative overflow-hidden flex flex-col shadow-[inset_0_0_40px_rgba(16,185,129,0.05)] group">
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-0">
-        <div className="w-full h-full" style={{ 
-          backgroundImage: 'linear-gradient(#10b981 1px, transparent 1px), linear-gradient(90deg, #10b981 1px, transparent 1px)',
-          backgroundSize: '40px 40px'
-        }}></div>
-      </div>
+    <div className={`flex-1 min-h-[300px] bg-[#020617] rounded-xl border border-emerald-500/20 p-4 relative overflow-hidden flex flex-col shadow-[inset_0_0_80px_rgba(0,255,65,0.05)] group select-none ${interactionMode === 'PAN' ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-crosshair'}`}>
+      <div className="absolute inset-0 pointer-events-none opacity-5 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(0,255,65,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,2px_100%] z-0"></div>
 
-      <div className="absolute top-4 left-4 z-20">
-        <div className="flex items-center space-x-2 bg-black/80 border border-emerald-500/30 px-3 py-1.5 rounded shadow-xl backdrop-blur-md">
-          <Activity size={14} className="text-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Signal_Oscilloscope_Array</span>
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-3">
+        <div className="flex items-center space-x-3 bg-black/90 border border-emerald-500/40 px-4 py-2 rounded shadow-2xl backdrop-blur-md">
+          <Activity size={18} className="text-emerald-400 animate-pulse" />
+          <div className="flex flex-col">
+            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-400">High-Res_Waveform_Telemetry</span>
+            <span className="text-[7px] font-mono text-emerald-900 uppercase">Aperture: {varianceWindow}m // Trace: GR_Artifact</span>
+          </div>
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 z-20 flex space-x-2 items-start">
-        {activeDepth && (
-           <div className="bg-purple-600/90 border border-purple-400 px-2 py-1 rounded shadow-xl animate-in fade-in slide-in-from-right-4">
-              <span className="text-[8px] font-terminal font-black text-white tracking-widest uppercase flex items-center gap-1">
-                <Fingerprint size={10} /> VAR_APERTURE: {varianceWindow}m
-              </span>
-           </div>
-        )}
-        {activeAnomalyId && (
-          <div className="flex items-center space-x-2 bg-emerald-500 border border-emerald-400 px-2 py-1 rounded text-[8px] font-black text-slate-950 uppercase animate-pulse">
-            <Zap size={10} />
-            <span>Anomaly_Voxel_Lock</span>
+      <div className="absolute top-4 right-4 z-30 flex space-x-3 items-start">
+        {activeDepth !== null && (
+          <div className="bg-emerald-500 text-slate-950 px-3 py-1.5 rounded font-black text-[10px] tracking-widest shadow-2xl animate-in fade-in zoom-in-95">
+             <Crosshair size={10} className="inline mr-2" /> DEPTH: {activeDepth.toFixed(2)}M
           </div>
         )}
-        {isElevationVisible && (
-          <div className="flex items-center space-x-2 bg-[#8b5e3c]/20 border border-[#8b5e3c]/40 px-2 py-1 rounded text-[8px] font-black text-[#8b5e3c] uppercase">
-            <Mountain size={10} />
-            <span>TVDSS_Enabled</span>
-          </div>
-        )}
+
+        <div className="flex bg-slate-950/90 border border-emerald-900/50 p-1 rounded shadow-2xl backdrop-blur-md">
+          <button onClick={() => setInteractionMode('ZOOM')} className={`p-2 rounded transition-all ${interactionMode === 'ZOOM' ? 'bg-emerald-500 text-slate-950' : 'text-emerald-900 hover:text-emerald-500'}`}>
+            <SearchIcon size={16} />
+          </button>
+          <button onClick={() => setInteractionMode('PAN')} className={`p-2 rounded transition-all ${interactionMode === 'PAN' ? 'bg-emerald-500 text-slate-950' : 'text-emerald-900 hover:text-emerald-500'}`}>
+            <Move size={16} />
+          </button>
+          <div className="w-px bg-emerald-900/20 mx-1"></div>
+          <button onClick={resetZoom} className="p-2 text-red-500 hover:bg-red-500/10 rounded transition-all">
+            <RotateCcw size={16} />
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 min-h-0 relative z-10">
+      <div className="flex-1 min-h-0 relative z-10 mt-12">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart 
+          <ComposedChart 
             data={combinedData} 
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            margin={{ top: 40, right: 10, left: 10, bottom: 10 }}
+            onMouseUp={handleMouseUp}
+            onMouseEnter={() => setIsHoveringChart(true)}
+            onMouseLeave={() => { handleMouseUp(); setActiveDepth(null); setIsHoveringChart(false); }}
+            margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
           >
-            <defs>
-               <linearGradient id="waveElevGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={elevColor} stopOpacity={0.1}/>
-                  <stop offset="95%" stopColor={elevColor} stopOpacity={0.0}/>
-               </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#10b981" opacity={0.05} vertical={false} />
+            <CartesianGrid strokeDasharray="2 10" stroke="#00FF41" opacity={0.05} />
             <XAxis 
               dataKey="depth" 
               hide={true}
+              domain={[zoomRange.left, zoomRange.right]}
+              type="number"
+              allowDataOverflow={true}
             />
-            <YAxis 
-              yAxisId="left"
-              stroke="#10b981" 
-              fontSize={8} 
-              axisLine={false} 
-              tickLine={false}
-              tick={{fill: '#064e3b', fontWeight: 'bold'}}
-              domain={['auto', 'auto']}
-            />
-            <YAxis 
-              yAxisId="right"
-              orientation="right"
-              stroke="#ef4444" 
-              fontSize={8} 
-              axisLine={false} 
-              tickLine={false}
-              tick={{fill: '#7f1d1d', fontWeight: 'bold'}}
-              domain={[0, 'auto']}
-            />
+            <YAxis hide={true} domain={['auto', 'auto']} />
             <Tooltip 
-              contentStyle={{ backgroundColor: 'rgba(2, 6, 23, 0.95)', border: '1px solid rgba(16, 185, 129, 0.4)', fontSize: '10px', fontFamily: 'JetBrains Mono' }}
-              itemStyle={{ padding: '2px 0' }}
-              cursor={{ stroke: '#10b981', strokeWidth: 1 }}
-              labelFormatter={(value) => `DEPTH: ${value}m`}
-              formatter={(value: any, name: string) => [value?.toFixed(2), (name || "").replace(/_/g, ' ')]}
-            />
-            <Legend 
-              verticalAlign="bottom" 
-              align="center" 
-              iconType="circle"
-              wrapperStyle={{ paddingTop: '10px', fontSize: '9px', fontWeight: 'black', textTransform: 'uppercase', fontFamily: 'JetBrains Mono' }}
+              contentStyle={{ backgroundColor: '#020617', border: '1px solid #00FF41', fontSize: '10px' }}
+              cursor={{ stroke: '#00FF41', strokeWidth: 1, strokeDasharray: '5 5' }}
             />
             
-            {/* Visual Variance Window Tracking */}
-            {activeDepth !== null && (
+            {interactionMode === 'ZOOM' && refAreaLeft && refAreaRight && (
+              <ReferenceArea x1={refAreaLeft} x2={refAreaRight} fill="#00FF41" fillOpacity={0.1} />
+            )}
+
+            {(anomalies || []).map(anomaly => (
               <ReferenceArea
-                yAxisId="left"
-                x1={activeDepth - varianceWindow}
-                x2={activeDepth + varianceWindow}
-                fill="#a855f7"
-                fillOpacity={0.05}
-                stroke="#a855f7"
-                strokeOpacity={0.1}
-                strokeDasharray="2 2"
+                key={anomaly.id}
+                x1={anomaly.startDepth}
+                x2={anomaly.endDepth}
+                fill={anomaly.severity === 'CRITICAL' ? '#ef4444' : '#f97316'}
+                fillOpacity={activeAnomalyId === anomaly.id ? 0.3 : 0.15}
+                className={activeAnomalyId === anomaly.id ? 'animate-pulse' : ''}
               />
-            )}
+            ))}
 
-            <Line 
-              yAxisId="right"
-              type="monotone" 
-              dataKey="diff" 
-              name="DISCORDANCE_DELTA" 
-              stroke="#ef4444" 
-              dot={false} 
-              strokeWidth={1.5} 
-              strokeDasharray="3 3"
-              isAnimationActive={false}
-              style={{ filter: 'drop-shadow(0 0 3px #ef4444)' }}
-            />
-
-            {isElevationVisible && (
-              <Area 
-                yAxisId="left" 
+            {(signals || []).map(sig => sig?.visible && (
+              <Line 
+                key={sig.id} 
                 type="monotone" 
-                dataKey="elevation" 
-                name="TVDSS_PROFILE" 
-                stroke={elevColor} 
-                fill="url(#waveElevGradient)" 
-                strokeWidth={1} 
+                dataKey={sig.id === 'SIG-001' ? 'baseGR' : sig.id === 'SIG-002' ? 'ghostGR' : sig.id} 
+                name={sig.id === 'SIG-002' ? ghostLabel : sig.name} 
+                stroke={sig.color} 
+                dot={false} 
+                strokeWidth={sig.id === 'SIG-001' ? (isHoveringChart ? 5 : 3) : (isHoveringChart ? 4 : 2)} 
                 isAnimationActive={false} 
+                activeDot={renderScanningDot}
                 connectNulls={true}
-                opacity={0.3}
+                className={isHoveringChart && (sig.id === 'SIG-001' || sig.id === 'SIG-002') ? 'spectral-shimmer' : ''}
+                style={{ transition: 'stroke-width 0.2s ease' }}
               />
-            )}
-
-            {activeAnomalyId && (
-              <Scatter
-                yAxisId="left"
-                data={activeSegmentData}
-                name="ACTIVE_PULSE"
-                fill="#ffffff"
-                isAnimationActive={false}
-                shape={(props: any) => {
-                  const { cx, cy } = props;
-                  return (
-                    <circle cx={cx} cy={cy} r={3} fill="#ffffff" className="animate-pulse" />
-                  );
-                }}
-              />
-            )}
-
-            {signals.find(s => s.id === 'SIG-001')?.visible && (
-              <Line 
-                yAxisId="left"
-                type="monotone" 
-                dataKey="baseGR" 
-                name="BASE_LOG" 
-                stroke="#10b981" 
-                dot={false} 
-                strokeWidth={2} 
-                isAnimationActive={false}
-                style={{ filter: 'drop-shadow(0 0 4px #10b981)' }}
-              />
-            )}
-            {signals.find(s => s.id === 'SIG-002')?.visible && (
-              <Line 
-                yAxisId="left"
-                type="monotone" 
-                dataKey="ghostGR" 
-                name={ghostLabel} 
-                stroke="#FF5F1F" 
-                dot={false} 
-                strokeWidth={2} 
-                isAnimationActive={false}
-                style={{ filter: 'drop-shadow(0 0 4px #FF5F1F)' }}
-              />
-            )}
-            
-            {signals.map(sig => {
-              if (sig.id !== 'SIG-001' && sig.id !== 'SIG-002' && sig.id !== 'SIG-ELEV' && sig.visible) {
-                return (
-                  <Line 
-                    yAxisId="left"
-                    key={sig.id} 
-                    type="monotone" 
-                    dataKey={sig.id} 
-                    name={sig.name} 
-                    stroke={sig.color} 
-                    dot={false} 
-                    strokeWidth={1.5} 
-                    isAnimationActive={false} 
-                    connectNulls={true}
-                    activeDot={{ r: 4, fill: sig.color, stroke: '#fff', strokeWidth: 1.5 }}
-                    style={{ filter: `drop-shadow(0 0 3px ${sig.color})` }}
-                  />
-                );
-              }
-              return null;
-            })}
-          </LineChart>
+            ))}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
-
-      <div className="absolute bottom-12 right-6 pointer-events-none opacity-20">
-        <span className="text-[40px] font-black text-emerald-900/10 italic select-none uppercase tracking-tighter">WAVEFORM_DENSITY</span>
+      
+      <div className="absolute bottom-4 left-4 flex gap-6 text-[8px] font-black uppercase text-emerald-900 tracking-widest z-20">
+         <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#00FF41]"></div> Signal_Staged</span>
+         <span className="flex items-center gap-1.5 opacity-40"><Zap size={10} /> Dynamic_Aperture_Locked</span>
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .spectral-shimmer {
+          filter: drop-shadow(0 0 12px currentColor);
+          animation: spectral-wave 2s ease-in-out infinite;
+        }
+        @keyframes spectral-wave {
+          0% { opacity: 0.6; stroke-dasharray: 100, 0; }
+          50% { opacity: 1; stroke-dasharray: 50, 50; }
+          100% { opacity: 0.6; stroke-dasharray: 100, 0; }
+        }
+      `}} />
     </div>
   );
 };
