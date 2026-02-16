@@ -23,19 +23,20 @@ const BasinAudit: React.FC<{isFocused?: boolean; onToggleFocus?: () => void}> = 
   const [vetoStep, setVetoStep] = useState<string>('');
   const [vetoReport, setVetoReport] = useState<SovereignVetoReport | null>(null);
 
-  const { assetStats, riskStats } = useMemo(() => {
+  const stats = useMemo(() => {
     const assetCounts: Record<string, number> = {};
     const riskCounts: Record<string, number> = {};
 
     MOCK_BASIN_AUDIT_DATA.forEach(region => {
       region.assets.forEach(assetGroup => {
         const assetType = assetGroup.type;
-        assetCounts[assetType] = (assetCounts[assetType] || 0);
+        if (!assetCounts[assetType]) assetCounts[assetType] = 0;
 
         assetGroup.riskProfiles.forEach(profileGroup => {
           const profileName = profileGroup.profile;
-          riskCounts[profileName] = (riskCounts[profileName] || 0) + profileGroup.wells.length;
-          assetCounts[assetType] = assetCounts[assetType] + profileGroup.wells.length;
+          const wellCount = profileGroup.wells.length;
+          riskCounts[profileName] = (riskCounts[profileName] || 0) + wellCount;
+          assetCounts[assetType] = assetCounts[assetType] + wellCount;
         });
       });
     });
@@ -112,7 +113,7 @@ const BasinAudit: React.FC<{isFocused?: boolean; onToggleFocus?: () => void}> = 
   };
 
   return (
-    <div className="flex flex-col h-full space-y-4 p-6 bg-slate-950/40 relative overflow-hidden font-terminal">
+    <div className="flex flex-col h-full space-y-4 p-6 bg-slate-950/40 relative overflow-hidden font-terminal text-[#E0E0E0]">
       <header className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-emerald-900/30 pb-4 relative z-10 gap-4">
         <div className="flex items-center space-x-4">
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/40 rounded-xl shadow-lg">
@@ -270,8 +271,8 @@ const BasinAudit: React.FC<{isFocused?: boolean; onToggleFocus?: () => void}> = 
                    <div className="flex-1 min-h-0">
                       <ResponsiveContainer width="100%" height="100%">
                          <PieChart>
-                            <Pie data={assetStats} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                               {assetStats.map((entry, index) => (
+                            <Pie data={stats.assetStats} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                               {stats.assetStats.map((entry, index) => (
                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                ))}
                             </Pie>
@@ -288,14 +289,14 @@ const BasinAudit: React.FC<{isFocused?: boolean; onToggleFocus?: () => void}> = 
                    </h3>
                    <div className="flex-1 min-h-0">
                       <ResponsiveContainer width="100%" height="100%">
-                         <BarChart data={riskStats}>
+                         <BarChart data={stats.riskStats}>
                             <CartesianGrid strokeDasharray="1 5" stroke="#10b981" opacity={0.1} vertical={false} />
                             <XAxis dataKey="name" stroke="#10b981" fontSize={8} />
                             <YAxis stroke="#10b981" fontSize={8} />
                             <Tooltip contentStyle={{ backgroundColor: '#020617', border: '1px solid #064e3b', fontSize: '10px' }} />
                             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                               {riskStats.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={RISK_COLORS[Object.keys(RISK_COLORS)[index % 3]] || '#ef4444'} />
+                               {stats.riskStats.map((entry, index) => (
+                                  <Cell key={`cell-risk-${index}`} fill={RISK_COLORS[Object.keys(RISK_COLORS)[index % 3]] || '#ef4444'} />
                                 ))}
                             </Bar>
                          </BarChart>
