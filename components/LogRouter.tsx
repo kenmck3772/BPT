@@ -184,11 +184,11 @@ const LogRouter: React.FC<LogRouterProps> = ({ isFocused, onToggleFocus }) => {
                   <div className="space-y-2">
                      <span className="text-[9px] font-black text-emerald-900 uppercase">Cerberus_Validation_Log</span>
                      <div className="bg-slate-950 p-4 border border-emerald-900/40 rounded-xl font-mono text-[9px] space-y-1">
-                        <div className="text-emerald-700">>> CHECKING FIELD: well_name ... {!!result.metadata.well_name ? 'VALID' : 'MISSING'}</div>
-                        <div className="text-emerald-700">>> CHECKING TYPE: {result.file_type} ... {result.file_type !== 'UNKNOWN' ? 'COMPLIANT' : 'VETO'}</div>
-                        <div className="text-emerald-700">>> COMPARING SCHEMA: well_data_v1.2 ... OK</div>
+                        <div className="text-emerald-700">&gt;&gt; CHECKING FIELD: well_name ... {!!result.metadata.well_name ? 'VALID' : 'MISSING'}</div>
+                        <div className="text-emerald-700">&gt;&gt; CHECKING TYPE: {result.file_type} ... {result.file_type !== 'UNKNOWN' ? 'COMPLIANT' : 'VETO'}</div>
+                        <div className="text-emerald-700">&gt;&gt; COMPARING SCHEMA: well_data_v1.2 ... OK</div>
                         <div className={`font-bold ${validationPassed ? 'text-emerald-500' : 'text-red-500'}`}>
-                           >> FINAL STATUS: {validationPassed === null ? 'PENDING' : validationPassed ? 'CLEAN_AUTHORIZED' : 'SCHEMA_VIOLATION'}
+                           &gt;&gt; FINAL STATUS: {validationPassed === null ? 'PENDING' : validationPassed ? 'CLEAN_AUTHORIZED' : 'SCHEMA_VIOLATION'}
                         </div>
                      </div>
                   </div>

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 import MissionControl from './components/MissionControl';
-import GhostSync from './GhostSync'; 
+import GhostSync from './components/GhostSync'; 
 import TraumaNode from './components/TraumaNode';
 import PulseAnalyzer from './components/PulseAnalyzer';
 import ReportsScanner from './components/ReportsScanner';

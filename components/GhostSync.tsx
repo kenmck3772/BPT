@@ -27,6 +27,11 @@ import { searchNDRMetadata } from '../services/ndrService';
 import { NDRProject } from '../types';
 import { secureAsset } from '../services/vaultService';
 import { GHOST_HUNTER_MISSION } from '../constants';
+import { globalPluginManager, TerminalContext, LogType } from '../core/plugins';
+import { weatherPlugin } from '../plugins/weatherPlugin';
+
+// Register plugins globally
+globalPluginManager.register(weatherPlugin);
 
 interface GhostSyncProps {
   isFocused?: boolean;
@@ -41,6 +46,7 @@ const COMMAND_REGISTRY = [
   { cmd: 'help', desc: 'Display available forensic procedures' },
   { cmd: 'save', desc: 'Commit session state to vault' },
   { cmd: 'veto', desc: 'Run variance-based decommissioning audit' },
+  { cmd: 'search', desc: 'Re-anchor kernel context to target well' },
   { cmd: 'scripts/real_las_audit.py', desc: 'Invoke LAS voxel extraction kernel' }
 ];
 
@@ -73,6 +79,13 @@ const GhostSync: React.FC<GhostSyncProps> = ({ isFocused, onToggleFocus }) => {
   const [localSliderOffset, setLocalSliderOffset] = useState(offset);
 
   // Added autocomplete state for CLI
+  const allCommands = useMemo(() => {
+    const pluginCommands = globalPluginManager.getCommands().map(c => ({ cmd: c.name, desc: c.description }));
+    // Filter out duplicates if any
+    const coreCmds = COMMAND_REGISTRY.filter(cc => !pluginCommands.some(pc => pc.cmd === cc.cmd));
+    return [...coreCmds, ...pluginCommands];
+  }, []);
+
   const [suggestions, setSuggestions] = useState<typeof COMMAND_REGISTRY>([]);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
 
@@ -182,11 +195,29 @@ const GhostSync: React.FC<GhostSyncProps> = ({ isFocused, onToggleFocus }) => {
     const trimmedCmd = String(cmd || '').trim();
     if (!trimmedCmd) return;
 
+    const [cmdName, ...args] = trimmedCmd.split(' ');
+
     addCliLogWithType(`brahan@seer:~$ ${trimmedCmd}`, 'INPUT');
     setIsCliProcessing(true);
     setSuggestions([]);
 
     try {
+      // Check plugin manager first
+      const pluginCmd = globalPluginManager.getCommands().find(c => c.name === cmdName);
+      if (pluginCmd) {
+        const context: TerminalContext = {
+          addLog: (msg, type) => addCliLogWithType(msg, type as any),
+          executeCommand: executeCommand,
+          getMockData: (key) => {
+            if (key === 'currentWell') return currentWellData;
+            if (key === 'mission') return GHOST_HUNTER_MISSION;
+            return null;
+          }
+        };
+        await pluginCmd.execute(args, context);
+        return;
+      }
+
       if (trimmedCmd.includes('scripts/real_las_audit.py')) {
         const filePath = 'Data/Ninian/NC12/3_03-N12_jwl_JWL_FILE_266223720.las';
         await streamLogs([
@@ -239,7 +270,7 @@ const GhostSync: React.FC<GhostSyncProps> = ({ isFocused, onToggleFocus }) => {
       else if (trimmedCmd === 'help') {
         await streamLogs([
           { msg: ">>> AVAILABLE_FORENSIC_PROCEDURES:", type: 'INFO' },
-          ...COMMAND_REGISTRY.map(c => ({ msg: `${c.cmd.padEnd(25)} - ${c.desc}`, type: 'PROC' })),
+          ...allCommands.map(c => ({ msg: `${c.cmd.padEnd(25)} - ${c.desc}`, type: 'PROC' })),
           { msg: "search [well]               - Re-anchor kernel context to target well", type: 'PROC' }
         ]);
       }
@@ -266,7 +297,7 @@ const GhostSync: React.FC<GhostSyncProps> = ({ isFocused, onToggleFocus }) => {
     const val = e.target.value;
     setCliInput(val);
     if (val.trim()) {
-      const matches = COMMAND_REGISTRY.filter(c => c.cmd.startsWith(val.toLowerCase().trim()));
+      const matches = allCommands.filter(c => c.cmd.startsWith(val.toLowerCase().trim()));
       setSuggestions(matches);
       setSuggestionIndex(0);
     } else {
@@ -687,6 +718,34 @@ const GhostSync: React.FC<GhostSyncProps> = ({ isFocused, onToggleFocus }) => {
                 {cliLogs.map((log, i) => <div key={i} className={`animate-in fade-in slide-in-from-left-1 leading-relaxed ${log?.type === 'ERR' ? 'text-red-500 font-black border-l-2 border-red-500 pl-2 bg-red-500/5' : log?.type === 'SUCCESS' ? 'text-emerald-400 font-black' : 'text-emerald-600/80'}`}>{log?.msg || ""}</div>)}
              </div>
              <div className="p-3 bg-slate-900/60 border-t border-emerald-500/10 flex items-center gap-2 relative">
+                {/* Autocomplete Suggestions UI */}
+                {suggestions.length > 0 && (
+                  <div className="absolute bottom-full left-0 w-full bg-slate-900 border border-emerald-500/30 rounded-t-xl overflow-hidden shadow-2xl z-50 mb-0.5 animate-in slide-in-from-bottom-2 duration-200">
+                    <div className="bg-emerald-500/10 px-3 py-1 border-b border-emerald-500/20 flex justify-between items-center">
+                      <span className="text-[7px] font-black text-emerald-500 uppercase tracking-widest">Recognized_Procedures</span>
+                      <span className="text-[7px] text-emerald-900 font-mono">[Tab] to select</span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto custom-scrollbar">
+                      {suggestions.map((s, i) => (
+                        <div 
+                          key={s.cmd}
+                          className={`px-3 py-2 text-[10px] flex items-center justify-between cursor-pointer transition-colors ${i === suggestionIndex ? 'bg-emerald-500 text-slate-950 font-black' : 'text-emerald-500 hover:bg-emerald-500/10'}`}
+                          onClick={() => {
+                            setCliInput(s.cmd);
+                            setSuggestions([]);
+                            inputRef.current?.focus();
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Command size={10} className={i === suggestionIndex ? 'text-slate-950' : 'text-emerald-500'} />
+                            <span className="font-mono">{s.cmd}</span>
+                          </div>
+                          <span className={`text-[8px] opacity-60 font-terminal ${i === suggestionIndex ? 'text-slate-900' : 'text-emerald-900'}`}>{s.desc}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <span className="text-[10px] font-black text-blue-500">$</span>
                 <input ref={inputRef} type="text" value={cliInput} aria-label="Forensic Command Prompt" onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Invoke_Forensic_Procedure..." className="flex-1 bg-transparent border-none text-[10px] text-emerald-100 font-mono outline-none" />
              </div>

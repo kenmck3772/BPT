@@ -10,8 +10,41 @@
   <style>
     body { margin: 0; background-color: #000; color: #00FF41; font-family: monospace; overflow: hidden; }
     .crt::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 100; background-size: 100% 2px, 3px 100%; pointer-events: none; }
-    .terminal { height: 40vh; padding: 20px; overflow-y: auto; text-shadow: 0 0 5px #00FF41; border-bottom: 1px solid #004411; }
-    #plot-area { height: 60vh; width: 100%; }
+    .terminal {
+      height: 40vh;
+      padding: 20px;
+      overflow-y: auto;
+      text-shadow: 0 0 5px #00FF41;
+      border-bottom: 1px solid #004411;
+      transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      background-color: #000;
+      background-image: 
+        linear-gradient(rgba(0, 255, 65, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 65, 0.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+      background-position: top left;
+    }
+    #plot-area {
+      height: 60vh;
+      width: 100%;
+      transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .depth-container {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      margin-top: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), margin-top 0.5s cubic-bezier(0.4, 0, 0.2, 1), padding 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .depth-container.expanded {
+      max-height: 250px;
+      opacity: 1;
+      margin-top: 12px;
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
   </style>
 <script type="importmap">
 {
@@ -35,6 +68,7 @@
     const e = React.createElement;
     function App() {
       const [data, setData] = React.useState(null);
+      const [showDepthParams, setShowDepthParams] = React.useState(false);
 
       React.useEffect(() => {
         fetch('https://storage.googleapis.com/run-sources-brahan-483303-us-central1/scraped-data/latest.json')
@@ -44,6 +78,24 @@
             renderPlot(json.geodetic_drift);
           });
       }, []);
+
+      React.useEffect(() => {
+        // resize plot-area continuously during visual terminal height transitions
+        let frameId;
+        const startTime = performance.now();
+        const duration = 500; // matching CSS transition duration
+        
+        const tick = (now) => {
+          try {
+            Plotly.Plots.resize('plot-area');
+          } catch (e) {}
+          if (now - startTime < duration) {
+            frameId = requestAnimationFrame(tick);
+          }
+        };
+        frameId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frameId);
+      }, [showDepthParams]);
 
       const renderPlot = (drift) => {
         const trace = {
@@ -65,16 +117,37 @@
       };
 
       return e('div', null,
-        e('div', { className: 'terminal' },
+        e('div', { 
+          className: 'terminal', 
+          style: { height: showDepthParams ? '58vh' : '40vh' } 
+        },
           e('h1', { className: 'text-xl glow' }, "BRAHAN FORENSIC SYSTEMS v4.0.1"),
           e('p', null, `STATUS: ONLINE [Jan 8 Stable]`),
           data && e('div', { className: 'mt-2' },
             e('p', null, `> ASSETS: ${data.records_count}`),
             e('p', null, `> DRIFT DETECTED: ${data.geodetic_drift}m`),
             e('p', null, `> CASING LEDGER: P-110 RECTIFIED`)
+          ),
+          e('button', {
+            id: 'toggle-depth-btn',
+            onClick: () => setShowDepthParams(!showDepthParams),
+            className: 'mt-3 px-3 py-1 border border-[#00FF41] text-[#00FF41] rounded bg-black hover:bg-[#00FF41]/20 cursor-pointer font-bold transition-all text-xs focus:outline-none block',
+            style: { textShadow: '0 0 5px #00FF41', boxShadow: '0 0 5px rgba(0, 255, 65, 0.3)' }
+          }, showDepthParams ? "▼ HIDE CO-LATERAL DEPTH DETAILS" : "▲ SHOW CO-LATERAL DEPTH DETAILS"),
+          e('div', { 
+            className: `depth-container border border-[#004411] bg-black/60 rounded text-xs leading-5 font-mono max-w-sm border-l-4 border-l-[#00FF41] ${showDepthParams ? 'expanded' : ''}` 
+          },
+            e('p', null, `> MAX MEASURED DEPTH (MD): 4,250.60 m`),
+            e('p', null, `> TRUE VERTICAL DEPTH (TVD): ${(4012.35 - (data ? data.geodetic_drift : 0)).toFixed(2)} m (CALIBRATED)`),
+            e('p', null, `> KELLY BUSHING (KB) ELEVATION: 31.20 m`),
+            e('p', null, `> WATER DEPTH (LAT): 142.15 m`),
+            e('p', null, `> DRIFTS CALIBRATED: ${data ? 'TRUE (LEDGER SYNCED)' : 'FALSE (LOCAL CACHE)'}`)
           )
         ),
-        e('div', { id: 'plot-area' })
+        e('div', { 
+          id: 'plot-area', 
+          style: { height: showDepthParams ? '42vh' : '60vh' } 
+        })
       );
     }
     ReactDOM.createRoot(document.getElementById('root')).render(e(App));
